@@ -1,0 +1,12 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+# This redirect is crucial for Single Page Apps (SPA) like Vue
+# It ensures that all navigation is handled by index.html (and Vue)
+# instead of looking for a specific file on the server.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
