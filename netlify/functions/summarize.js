@@ -1,7 +1,8 @@
-// netlify/functions/summarize.js
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+// Change 1: Use 'import' instead of 'require'
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-exports.handler = async function (event, context) {
+// Change 2: Use 'export const handler' instead of 'exports.handler'
+export const handler = async function (event, context) {
   // Only allow POST requests
   if (event.httpMethod !== "POST") {
     return { statusCode: 405, body: "Method Not Allowed" };
@@ -14,12 +15,12 @@ exports.handler = async function (event, context) {
       return { statusCode: 400, body: "Missing text or title" };
     }
 
-    // Initialize Gemini
+    // Initialize Gemini (API Key from environment)
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-// Use the concrete version number
-const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+    
+    // Use the model alias that showed up in your list
+    const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
-    // The Prompt
     const prompt = `
       You are a policy analyst for an environmental advocacy group.
       Analyze the following article title and text (if available).
@@ -40,11 +41,9 @@ const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
       }
     `;
 
-    // Ask Gemini
     const result = await model.generateContent(prompt);
     const response = await result.response;
     
-    // Clean up the response (sometimes it includes ```json markers)
     let jsonText = response.text().replace(/```json/g, '').replace(/```/g, '').trim();
 
     return {
