@@ -1,7 +1,8 @@
 <script setup>
 import { ref, onMounted } from 'vue';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, isPast, parseISO } from 'date-fns';
 import { useSummaries } from '../composables/useSummaries'; // Import logic
+
 
 const props = defineProps(['item']);
 const { fetchSummary, generateAndSaveSummary } = useSummaries(); // Init
@@ -31,6 +32,13 @@ const handleSummarize = async () => {
     loading.value = false;
   }
 };
+
+const getDeadlineStatus = (dateString) => {
+  if (!dateString) return null;
+  const date = parseISO(dateString);
+  if (isPast(date)) return 'expired';
+  return 'active';
+};
 </script>
 
 <template>
@@ -38,6 +46,12 @@ const handleSummarize = async () => {
     <div class="meta">
       <span class="source-tag">{{ item.source }}</span>
       <span class="date">{{ formatDistanceToNow(item.pubDate) }} ago</span>
+      <span v-if="item.agency" class="agency-tag">{{ item.agency }}</span>
+    </div>
+
+    <div v-if="item.dueDate" class="deadline-banner">
+      📅 Comments Due: <strong>{{ item.dueDate }}</strong>
+      <span v-if="getDeadlineStatus(item.dueDate) === 'active'" class="urgent-badge">OPEN</span>
     </div>
     
     <h3><a :href="item.link" target="_blank">{{ item.title }}</a></h3>
@@ -99,4 +113,40 @@ p { margin: 0; color: #444; line-height: 1.4; }
 .badge.low { background: #dcfce7; color: #166534; }
 .tweet-box { margin-top: 10px; background: #f3f4f6; padding: 8px; border-radius: 4px; font-size: 0.9rem; font-style: italic; color: #555; }
 .error-msg { color: #dc2626; font-size: 0.9rem; }
+.official-doc {
+  border-left: 4px solid #003366; /* Official Navy Blue */
+  background-color: #fbfbfd;
+}
+
+.agency-tag {
+  font-size: 0.75rem;
+  color: #666;
+  background: #eee;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 8px;
+}
+
+.deadline-banner {
+  background-color: #fff3cd; /* Warning Yellow */
+  color: #856404;
+  padding: 8px;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid #ffeeba;
+}
+
+.urgent-badge {
+  background: #28a745;
+  color: white;
+  font-weight: bold;
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
 </style>

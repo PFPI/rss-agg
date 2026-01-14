@@ -1,10 +1,13 @@
 <script setup>
 import { ref } from 'vue';
+import SourceHelpModal from './SourceHelpModal.vue';
+
 defineProps(['feeds', 'hiddenFeeds']);
 const emit = defineEmits(['add-feed', 'remove-feed', 'toggle-feed', 'import-opml', 'export-opml']);
 
 const newUrl = ref('');
 const fileInput = ref(null); 
+const showHelp = ref(false);
 
 const submit = () => {
   if(newUrl.value) {
@@ -28,7 +31,13 @@ const handleFileChange = (event) => {
 
 <template>
   <div>
-    <h3>Sources</h3>
+    <div class="header-row">
+      <h3>Sources</h3>
+      <button type="button" class="help-btn" @click="showHelp = true" title="How to find sources">
+        ?
+      </button>
+    </div>
+
     <div class="input-group">
       <input v-model="newUrl" placeholder="RSS URL" @keyup.enter="submit" />
       <button class="add-btn" @click="submit">+</button>
@@ -44,11 +53,11 @@ const handleFileChange = (event) => {
       />
       
       <button class="opml-btn" @click="triggerImport">
-        <span class="icon">📥</span> Import
+        <span class="icon">📂</span> Import
       </button>
       
       <button class="opml-btn" @click="$emit('export-opml')">
-        <span class="icon">📤</span> Export
+        <span class="icon">💾</span> Export
       </button>
     </div>
     
@@ -56,58 +65,65 @@ const handleFileChange = (event) => {
       <li v-for="feed in feeds" :key="feed" class="feed-item" :class="{ 'muted': hiddenFeeds.includes(feed) }">
         <div class="feed-info">
           <button class="icon-btn toggle-btn" @click="$emit('toggle-feed', feed)">
-            <span v-if="hiddenFeeds.includes(feed)">🙈</span>
-            <span v-else>👁️</span>
+            <span v-if="hiddenFeeds.includes(feed)">👁️</span>
+            <span v-else>✅</span>
           </button>
           <span class="feed-name" :title="feed">{{ feed }}</span>
         </div>
         <button class="icon-btn danger-btn" @click="$emit('remove-feed', feed)">x</button>
       </li>
     </ul>
+
+    <SourceHelpModal v-if="showHelp" @close="showHelp = false" />
   </div>
 </template>
 
 <style scoped>
-/* Existing Styles */
-.input-group { display: flex; gap: 5px; margin-bottom: 5px; }
-.input-group input { flex: 1; padding: 5px; border: 1px solid #ccc; border-radius: 4px; }
-.add-btn { padding: 5px 10px; cursor: pointer; }
-
-/* NEW Styles for OPML Buttons */
-.opml-actions {
+/* NEW: Header Alignment */
+.header-row {
   display: flex;
-  gap: 8px; /* Space between buttons */
-  margin-bottom: 15px;
+  align-items: center;
+  gap: 8px; /* Space between text and button */
+  margin-bottom: 10px;
 }
 
-.opml-btn {
-  flex: 1; /* Each button takes 50% width */
+h3 {
+  margin: 0; /* Remove default margin so it aligns nicely */
+  font-size: 1.1rem;
+}
+
+.help-btn {
+  background: #f3f4f6;
+  color: #6b7280;
+  border: 1px solid #d1d5db;
+  border-radius: 50%;
+  width: 20px;       /* Slightly smaller to fit next to header */
+  height: 20px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  
-  font-size: 0.85rem;
-  padding: 6px 10px;
-  
-  background-color: #ffffff;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  color: #555;
-  cursor: pointer;
   transition: all 0.2s;
 }
 
-.opml-btn:hover {
-  background-color: #f8f9fa;
-  border-color: #bbb;
-  color: #333;
+.help-btn:hover {
+  background: #d1d5db;
+  color: #374151;
+  border-color: #9ca3af;
 }
 
-.icon {
-  font-size: 1rem;
-  line-height: 1;
-}
+/* Existing Styles ... */
+.input-group { display: flex; gap: 5px; margin-bottom: 15px; }
+.input-group input { flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; }
+.add-btn { padding: 5px 12px; cursor: pointer; background: #eee; border: 1px solid #ccc; border-radius: 4px; }
+.add-btn:hover { background: #ddd; }
+
+.opml-actions { display: flex; gap: 8px; margin-bottom: 15px; }
+.opml-btn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 0.85rem; padding: 6px 10px; background-color: #ffffff; border: 1px solid #ddd; border-radius: 4px; color: #555; cursor: pointer; transition: all 0.2s; }
+.opml-btn:hover { background-color: #f8f9fa; border-color: #bbb; color: #333; }
+.icon { font-size: 1rem; line-height: 1; }
 
 /* List Styles */
 .feed-list { padding: 0; margin: 0; list-style: none; }
