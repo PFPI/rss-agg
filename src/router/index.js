@@ -20,6 +20,10 @@ router.beforeEach((to, from, next) => {
 
   if (requiresAuth && !currentUser) {
     next('/login');
+  } else if (requiresAuth && currentUser && !currentUser.emailVerified) {
+    // Optional: You could redirect to a specific "Please Verify" page instead
+    alert("Please verify your email before logging in.");
+    next('/login');
   } else {
     next();
   }
