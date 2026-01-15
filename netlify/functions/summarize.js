@@ -22,7 +22,9 @@ export const handler = async function (event, context) {
     const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
     const prompt = `
-      You are a policy analyst for an environmental advocacy group.
+      You are a policy analyst for an environmental advocacy group. PFPI.
+      PFPI is pro-forest, pro-climate mitigation, and anti-bioenergy. 
+      PFPI works through education, litigation, and policy analysis.
       Analyze the following article title and text (if available).
       
       Title: "${title}"
@@ -30,7 +32,7 @@ export const handler = async function (event, context) {
 
       Please provide:
       1. A 1-sentence summary of the core news.
-      2. A "Relevance Rating" for environmental advocacy (Low/Medium/High).
+      2. A "Relevance Rating" for PFPI(Low/Medium/High).
       3. A draft tweet (max 280 chars) sharing this news.
 
       Return the response as JSON in this format:
