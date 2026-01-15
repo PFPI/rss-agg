@@ -5,7 +5,7 @@ import SidebarBuckets from './SidebarBuckets.vue';
 defineProps(['feeds', 'loading', 'hiddenFeeds', 'categories']);
 defineEmits([
   'add-feed', 'remove-feed', 'refresh', 'toggle-feed', 
-  'add-category', 'remove-category', 'edit-category'
+  'add-category', 'remove-category', 'edit-category', 'update-feed'
 ]);
 </script>
 
@@ -17,6 +17,7 @@ defineEmits([
   @add-feed="$emit('add-feed', $event)"
   @remove-feed="$emit('remove-feed', $event)"
   @toggle-feed="$emit('toggle-feed', $event)"
+  @update-feed="(u, n, p) => $emit('update-feed', u, n, p)" 
   @import-opml="$emit('import-opml', $event)"  
   @export-opml="$emit('export-opml')"
 />

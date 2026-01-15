@@ -22,7 +22,8 @@ const {
   removeCategory,
   refreshAllFeeds,
   importOPML,
-  exportOPML 
+  exportOPML, 
+  updateFeed, 
 } = useFeeds(user);
 
 const router = useRouter();
@@ -131,6 +132,7 @@ watch(user, (newUser) => {
   @refresh="refreshAllFeeds"
   @import-opml="importOPML" 
   @export-opml="exportOPML"
+  @update-feed="updateFeed"
 />
 
       <div class="content">

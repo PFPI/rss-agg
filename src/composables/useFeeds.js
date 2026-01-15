@@ -1,9 +1,10 @@
 import { ref } from 'vue';
 import { db } from '../firebase';
-import { doc, setDoc, getDoc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
+import { doc, setDoc, getDoc, updateDoc, collection, getDocs, deleteDoc, arrayUnion, arrayRemove } from "firebase/firestore";
 import { parseXML, autoCategorize } from '../utils/feedProcessor'; // Import logic
 import { parseOPML, downloadOPML } from '../utils/opml';
 import { isFederalRegisterUrl, fetchFederalRegisterDocs } from '../utils/federalRegister';
+import { generateArticleId } from '../utils/hash';
 
 const feedItems = ref([]);
 const userFeeds = ref([]);
@@ -12,40 +13,49 @@ const loading = ref(false);
 
 export function useFeeds(user) {
 
-    const fetchSingleFeed = async (url) => {
+    // Helper: Normalize legacy string feeds to objects
+    const normalizeFeeds = (feeds) => {
+        return feeds.map(f => typeof f === 'string' ? { url: f, name: f, isPublic: false } : f);
+    };
+
+    const fetchSingleFeed = async (feedObj) => {
+        const { url, name } = feedObj;
+        let items = [];
+
         if (isFederalRegisterUrl(url)) {
             try {
-                console.log(`Fetching Federal Register API: ${url}`);
-                const docs = await fetchFederalRegisterDocs(url);
-
-                // Add categories (using your existing autoCategorize logic)
-                return autoCategorize(docs, categories.value);
+                items = await fetchFederalRegisterDocs(url);
             } catch (e) {
-                console.error(`Failed to load FR feed: ${url}`, e);
-                return [];
+                console.error(`FR Error: ${url}`, e);
+            }
+        } else {
+            try {
+                const res = await fetch(`/.netlify/functions/fetch-feed?url=${encodeURIComponent(url)}`);
+                if (res.ok) {
+                    const text = await res.text();
+                    items = parseXML(text, url);
+                }
+            } catch (e) {
+                console.error(`RSS Error: ${url}`, e);
             }
         }
 
-        try {
-            const res = await fetch(`/.netlify/functions/fetch-feed?url=${encodeURIComponent(url)}`);
-            if (!res.ok) throw new Error('Proxy error');
-            const text = await res.text();
-            const newItems = parseXML(text, url);
-            return autoCategorize(newItems, categories.value); // Pass value, not ref
-        } catch (e) {
-            console.error(`Failed to load ${url}`, e);
-            return [];
+        // Override the "Source" name if the user gave it a custom label
+        if (name && name !== url) {
+            items = items.map(i => ({ ...i, source: name }));
         }
+
+        return autoCategorize(items, categories.value);
     };
-
-
 
     const refreshAllFeeds = async () => {
         if (!user.value) return;
         loading.value = true;
         feedItems.value = [];
-        const results = await Promise.all(userFeeds.value.map(url => fetchSingleFeed(url)));
-        feedItems.value = results.flat().sort((a, b) => b.pubDate - a.pubDate);
+        
+        const results = await Promise.all(userFeeds.value.map(f => fetchSingleFeed(f)));
+        
+        feedItems.value = results.flat().sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
         loading.value = false;
     };
 
@@ -53,30 +63,98 @@ export function useFeeds(user) {
         if (!user.value) return;
         const docRef = doc(db, "users", user.value.uid);
         const docSnap = await getDoc(docRef);
+        
         if (docSnap.exists()) {
             const data = docSnap.data();
-            userFeeds.value = data.feeds || [];
+            userFeeds.value = normalizeFeeds(data.feeds || []);
             categories.value = data.categories || [];
             refreshAllFeeds();
         } else {
+            // Init new user
             await setDoc(docRef, { feeds: [], categories: [] });
             userFeeds.value = [];
             categories.value = [];
         }
     };
 
-    const addFeed = async (url) => {
+    const saveUserFeeds = async () => {
         if (!user.value) return;
-        userFeeds.value.push(url);
-        await setDoc(doc(db, "users", user.value.uid), { feeds: arrayUnion(url) }, { merge: true });
+        await updateDoc(doc(db, "users", user.value.uid), { feeds: userFeeds.value });
+    };
+
+    const addFeed = async (url, name = null) => {
+        // Prevent duplicates
+        if (userFeeds.value.some(f => f.url === url)) return;
+
+        const newFeed = { 
+            url, 
+            name: name || url, // Default name is URL until edited
+            isPublic: false 
+        };
+
+        userFeeds.value.push(newFeed);
+        await saveUserFeeds();
         refreshAllFeeds();
     };
 
-    const removeFeed = async (url) => {
-        if (!user.value) return;
-        userFeeds.value = userFeeds.value.filter(f => f !== url);
-        feedItems.value = feedItems.value.filter(i => i.sourceUrl !== url);
-        await setDoc(doc(db, "users", user.value.uid), { feeds: arrayRemove(url) }, { merge: true });
+    const removeFeed = async (feedToRemove) => {
+        // If it was public, remove it from the public library too
+        if (feedToRemove.isPublic) {
+            await togglePublic(feedToRemove, false); // Turn off sharing first
+        }
+
+        userFeeds.value = userFeeds.value.filter(f => f.url !== feedToRemove.url);
+        feedItems.value = feedItems.value.filter(i => i.sourceUrl !== feedToRemove.url);
+        await saveUserFeeds();
+    };
+
+    const updateFeed = async (originalUrl, newName, isPublic) => {
+        const feedIndex = userFeeds.value.findIndex(f => f.url === originalUrl);
+        if (feedIndex === -1) return;
+
+        const oldFeed = userFeeds.value[feedIndex];
+        const newFeed = { ...oldFeed, name: newName, isPublic };
+        
+        userFeeds.value[feedIndex] = newFeed;
+        await saveUserFeeds();
+
+        // Handle Public Library Sync
+        if (oldFeed.isPublic !== newFeed.isPublic || (newFeed.isPublic && oldFeed.name !== newFeed.name)) {
+            await syncToPublicLibrary(newFeed);
+        }
+
+        if (oldFeed.name !== newFeed.name) {
+            refreshAllFeeds();
+        }
+    };
+
+    // --- Sharing Logic ---
+
+    const syncToPublicLibrary = async (feed) => {
+        const feedId = generateArticleId(feed.url);
+        const docRef = doc(db, 'public_feeds', feedId);
+
+        if (feed.isPublic) {
+            await setDoc(docRef, {
+                url: feed.url,
+                name: feed.name,
+                sharedBy: user.value ? user.value.email : 'Anonymous',
+                updatedAt: new Date()
+            }, { merge: true });
+        } else {
+            await deleteDoc(docRef);
+        }
+    };
+
+    const togglePublic = async (feed, shouldBePublic) => {
+         // Helper to safely reuse sync logic
+         const updatedFeed = { ...feed, isPublic: shouldBePublic };
+         await syncToPublicLibrary(updatedFeed);
+    }
+
+    const fetchPublicFeeds = async () => {
+        const querySnapshot = await getDocs(collection(db, "public_feeds"));
+        return querySnapshot.docs.map(doc => doc.data());
     };
 
     const addCategory = async (name, keywordsString) => {
@@ -106,24 +184,28 @@ export function useFeeds(user) {
         feedItems.value = autoCategorize(feedItems.value, categories.value);
     };
 
-    const importOPML = async (file) => {
+const importOPML = async (file) => {
         if (!user.value || !file) return;
-
         try {
             loading.value = true;
             const text = await file.text();
             const newUrls = parseOPML(text);
+            
+            // Convert simple URLs to feed objects
+            const newFeedObjects = newUrls.map(url => ({ 
+                url, 
+                name: url, 
+                isPublic: false 
+            }));
 
-            if (newUrls.length === 0) throw new Error("No feeds found in OPML");
+            // Filter out duplicates
+            const existingUrls = new Set(userFeeds.value.map(f => f.url));
+            const uniqueFeeds = newFeedObjects.filter(f => !existingUrls.has(f.url));
 
-            // Bulk update Firestore
-            // arrayUnion(...newUrls) adds only unique values
-            await updateDoc(doc(db, "users", user.value.uid), {
-                feeds: arrayUnion(...newUrls)
-            });
+            if (uniqueFeeds.length === 0) return;
 
-            // Update local state and refresh
-            userFeeds.value = [...new Set([...userFeeds.value, ...newUrls])];
+            userFeeds.value = [...userFeeds.value, ...uniqueFeeds];
+            await saveUserFeeds();
             await refreshAllFeeds();
         } catch (e) {
             console.error("OPML Import Failed", e);
@@ -135,13 +217,14 @@ export function useFeeds(user) {
 
     const exportOPML = () => {
         if (userFeeds.value.length === 0) return;
-        downloadOPML(userFeeds.value);
+        // Map back to simple strings for OPML export
+        downloadOPML(userFeeds.value.map(f => f.url));
     };
 
     return {
         feedItems, userFeeds, categories, loading,
-        loadUserPreferences, addFeed, removeFeed,
+        loadUserPreferences, addFeed, removeFeed, updateFeed,
         addCategory, editCategory, removeCategory, refreshAllFeeds,
-        importOPML, exportOPML,
+        importOPML, exportOPML, fetchPublicFeeds,
     };
 }

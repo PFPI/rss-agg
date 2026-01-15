@@ -33,7 +33,7 @@ export const handler = async function (event, context) {
       Please provide:
       1. A 1-sentence summary of the core news.
       2. A "Relevance Rating" for PFPI(Low/Medium/High).
-      3. A draft tweet (max 280 chars) sharing this news.
+      3. A draft tweet (max 280 chars) sharing this news to our audience and funders.
 
       Return the response as JSON in this format:
       {
