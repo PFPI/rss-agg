@@ -31,6 +31,8 @@ const router = useRouter();
 const searchQuery = ref('');
 const hiddenFeeds = ref([]); 
 const activeTab = ref('All'); 
+const sortBy = ref('date');
+const sortOrder = ref('desc');
 
 // --- Filtering Logic ---
 // (We calculate the full filtered list here, and pass it to FeedStream to paginate)
@@ -56,7 +58,23 @@ const filteredItems = computed(() => {
     );
   }
 
-  return items;
+  // 4. Sort
+  const sorted = [...items].sort((a, b) => {
+    if (sortBy.value === 'date') {
+      const dateA = new Date(a.pubDate);
+      const dateB = new Date(b.pubDate);
+      return sortOrder.value === 'asc'
+        ? dateA - dateB
+        : dateB - dateA;
+    } else if (sortBy.value === 'title') {
+      return sortOrder.value === 'asc'
+        ? a.title.localeCompare(b.title)
+        : b.title.localeCompare(a.title);
+    }
+    return 0;
+  });
+
+  return sorted;
 });
 
 // --- Actions ---
@@ -66,6 +84,10 @@ const toggleFeed = (url) => {
   } else {
     hiddenFeeds.value.push(url);
   }
+};
+
+const toggleSortOrder = () => {
+  sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc';
 };
 
 const handleLogout = async () => {
@@ -112,19 +134,32 @@ watch(user, (newUser) => {
 />
 
       <div class="content">
-        <div class="tabs">
-          <button 
-            :class="['tab', { active: activeTab === 'All' }]" 
-            @click="activeTab = 'All'">
-            All
-          </button>
-          <button 
-            v-for="cat in categories" 
-            :key="cat.name"
-            :class="['tab', { active: activeTab === cat.name }]" 
-            @click="activeTab = cat.name">
-            {{ cat.name }}
-          </button>
+        <div class="controls-row">
+          <div class="tabs">
+            <button
+              :class="['tab', { active: activeTab === 'All' }]"
+              @click="activeTab = 'All'">
+              All
+            </button>
+            <button
+              v-for="cat in categories"
+              :key="cat.name"
+              :class="['tab', { active: activeTab === cat.name }]"
+              @click="activeTab = cat.name">
+              {{ cat.name }}
+            </button>
+          </div>
+
+          <div class="sort-controls">
+            <label>Sort by:</label>
+            <select v-model="sortBy">
+              <option value="date">Date</option>
+              <option value="title">Title</option>
+            </select>
+            <button class="sort-btn" @click="toggleSortOrder" title="Toggle Sort Order">
+              {{ sortOrder === 'asc' ? '↑' : '↓' }}
+            </button>
+          </div>
         </div>
 
         <FeedStream 
@@ -144,8 +179,13 @@ main { display: grid; grid-template-columns: 250px 1fr; gap: 20px; }
 .search-bar { padding: 5px; margin-right: 10px; width: 200px; }
 .header-actions { display: flex; gap: 10px; align-items: center; }
 .logout-btn { background-color: #f8f9fa; border: 1px solid #ccc; padding: 8px 15px; border-radius: 4px; cursor: pointer; }
-.tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #eee; padding-bottom: 10px; overflow-x: auto; }
+.controls-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+.tabs { display: flex; gap: 10px; overflow-x: auto; }
 .tab { background: none; border: none; padding: 8px 16px; cursor: pointer; font-size: 1rem; color: #666; border-radius: 20px; white-space: nowrap; }
 .tab.active {  background-color: #e0f7fa; color: #006064; font-weight: bold; }
 .tab:hover { background-color: #f0f0f0; }
+.sort-controls { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; color: #666; }
+.sort-controls select { padding: 4px 8px; border-radius: 4px; border: 1px solid #ccc; background: white; }
+.sort-btn { background: none; border: 1px solid #ccc; border-radius: 4px; padding: 4px 8px; cursor: pointer; min-width: 30px; }
+.sort-btn:hover { background: #f0f0f0; }
 </style>
