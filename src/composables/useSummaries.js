@@ -1,6 +1,7 @@
 import { db } from '../firebase';
 import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { generateArticleId } from '../utils/hash';
+import { sanitizeForFirestore } from '../utils/firestore';
 
 export function useSummaries() {
 
@@ -39,12 +40,15 @@ export function useSummaries() {
     if (!res.ok) throw new Error("AI generation failed");
     const data = await res.json();
 
-    // 3. Save to DB
-    const summaryData = {
+    // 3. Save to DB (SANITIZED)
+    const rawSummary = {
       ...data,
       originalUrl: item.link,
       createdAt: Timestamp.now()
     };
+
+    // If the AI returns "undefined" for a field (rare but possible), this fixes it:
+    const summaryData = sanitizeForFirestore(rawSummary);
 
     const docRef = doc(db, 'summaries', articleId);
     await setDoc(docRef, summaryData);

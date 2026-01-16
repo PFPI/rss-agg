@@ -2,6 +2,7 @@ import { ref, computed } from 'vue';
 import { db } from '../firebase';
 import { doc, setDoc, deleteDoc, collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { generateArticleId } from '../utils/hash';
+import { sanitizeForFirestore } from '../utils/firestore';
 
 const savedItems = ref([]);
 const loading = ref(false);
@@ -47,22 +48,17 @@ export function useSaved(user) {
       savedItems.value = savedItems.value.filter(i => i.id !== articleId);
     } else {
       // SAVE
-      const savedData = {
+      const rawData = {
         ...item,
         id: articleId,
         userId: user.value.uid,
         savedAt: new Date().toISOString(),
-        loading: false, // Don't save UI state
+        loading: false, 
         error: null 
       };
 
-      // 🛡️ SANITIZATION FIX:
-      // Firestore crashes on 'undefined', so we must delete those keys or set them to null.
-      Object.keys(savedData).forEach(key => {
-        if (savedData[key] === undefined) {
-          savedData[key] = null; // Convert undefined to null (safer than delete)
-        }
-      });
+      // 2. USE THE SANITIZER
+      const savedData = sanitizeForFirestore(rawData);
       
       await setDoc(docRef, savedData);
       savedItems.value.unshift(savedData);

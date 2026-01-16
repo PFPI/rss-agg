@@ -1,23 +1,31 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue';
-import { formatDistanceToNow, isPast, parseISO } from 'date-fns';
-import { useSummaries } from '../composables/useSummaries'; // Import logic
+// 1. ADD 'isValid' to imports
+import { formatDistanceToNow, isPast, parseISO, isValid } from 'date-fns';
+import { useSummaries } from '../composables/useSummaries';
 import { useSaved } from '../composables/useSaved';
 import { useAuth } from '../composables/useAuth';
 
 const props = defineProps(['item']);
-const { user } = useAuth();
-const { fetchSummary, generateAndSaveSummary } = useSummaries(); // Init
-const { toggleSave, isSaved } = useSaved(user);
 
+const { user } = useAuth();
+const { fetchSummary, generateAndSaveSummary } = useSummaries();
+const { toggleSave, isSaved } = useSaved(user);
 
 const summary = ref(null);
 const loading = ref(false);
 const checkingCache = ref(true);
 const error = ref(null);
 
+// 2. NEW: Safe Date Formatter
+const getRelativeTime = (dateString) => {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  if (!isValid(date)) return ''; // Return empty string if invalid
+  return formatDistanceToNow(date) + ' ago';
+};
+
 const loadSummary = async () => {
-  // Reset state first!
   summary.value = null;
   error.value = null;
   checkingCache.value = true;
@@ -36,11 +44,8 @@ const handleSummarize = async () => {
   error.value = null;
 
   try {
-    // A. Generate the Summary
     summary.value = await generateAndSaveSummary(props.item);
     
-    // B. Auto-Save the Article (if not already saved)
-    // This ensures the article reference sticks around in the "Saved" tab
     if (!isSaved(props.item)) {
       await toggleSave(props.item);
     }
@@ -70,14 +75,16 @@ const getDeadlineStatus = (dateString) => {
       'nyt-news': item.source === 'New York Times'
     }"
   >
-  <div v-if="item.image" class="card-image">
+    <div v-if="item.image" class="card-image">
       <img :src="item.image" alt="Article Thumbnail" loading="lazy" />
     </div>
 
-<div class="meta-header">
+    <div class="meta-header">
       <div class="meta-left">
         <span class="source-tag">{{ item.source }}</span>
-        <span class="date">{{ formatDistanceToNow(new Date(item.pubDate)) }} ago</span>
+        
+        <span class="date">{{ getRelativeTime(item.pubDate) }}</span>
+        
         <span v-if="item.agency" class="agency-tag">{{ item.agency }}</span>
       </div>
       
@@ -124,7 +131,7 @@ const getDeadlineStatus = (dateString) => {
         @click="handleSummarize" 
         :disabled="loading"
       >
-        {{ loading ? 'Analyzing...' : '⚡ Summarize' }}
+        {{ loading ? 'Analyzing...' : '⚡ Summarize & Save' }}
       </button>
       
       <span v-else class="saved-indicator">
@@ -135,7 +142,7 @@ const getDeadlineStatus = (dateString) => {
 </template>
 
 <style scoped>
-/* Keep your existing styles exactly as they were */
+/* Keep existing styles */
 .card { border: 1px solid #ddd; padding: 15px; border-radius: 4px; background: #fff; display: flex; flex-direction: column; gap: 10px; }
 .meta { font-size: 0.8em; color: #666; display: flex; justify-content: space-between; }
 .source-tag { background: #e0f7fa; padding: 2px 5px; border-radius: 3px; color: #006064; }
@@ -155,100 +162,20 @@ p { margin: 0; color: #444; line-height: 1.4; }
 .badge.low { background: #dcfce7; color: #166534; }
 .tweet-box { margin-top: 10px; background: #f3f4f6; padding: 8px; border-radius: 4px; font-size: 0.9rem; font-style: italic; color: #555; }
 .error-msg { color: #dc2626; font-size: 0.9rem; }
-.official-doc {
-  border-left: 4px solid #003366; /* Official Navy Blue */
-  background-color: #fbfbfd;
-}
-
-.agency-tag {
-  font-size: 0.75rem;
-  color: #666;
-  background: #eee;
-  padding: 2px 6px;
-  border-radius: 4px;
-  margin-left: 8px;
-}
-
-.deadline-banner {
-  background-color: #fff3cd; /* Warning Yellow */
-  color: #856404;
-  padding: 8px;
-  border-radius: 4px;
-  font-size: 0.9rem;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border: 1px solid #ffeeba;
-}
-
-.urgent-badge {
-  background: #28a745;
-  color: white;
-  font-weight: bold;
-  font-size: 0.7rem;
-  padding: 2px 6px;
-  border-radius: 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.guardian-news {
-  border-left: 4px solid #052962; /* Guardian Navy Blue */
-}
-.guardian-news .source-tag {
-  background-color: #052962;
-  color: white;
-}
-/* NEW: NYT Style (Classic Black) */
-.nyt-news {
-  border-left: 4px solid #000000;
-}
-.nyt-news .source-tag {
-  background-color: #000000;
-  color: white;
-  font-family: 'Georgia', serif; /* Optional: adds that newspaper feel */
-}
-
-/* NEW: Image Styling */
-.card-image {
-  margin-bottom: 12px;
-  border-radius: 4px;
-  overflow: hidden;
-  height: 180px; /* Fixed height for consistency */
-  background: #f0f0f0;
-}
-
-.card-image img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover; /* Ensures image fills the box without stretching */
-  display: block;
-}
-
-/* Update .card-content to handle layout */
-.card-content {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.meta-header {
-  display: flex; 
-  justify-content: space-between; 
-  align-items: flex-start;
-  margin-bottom: 8px;
-}
-.meta-left {
-  font-size: 0.8em; color: #666; display: flex; gap: 8px; align-items: center;
-}
-
-/* Save Button Styles */
-.save-btn {
-  background: none; border: 1px solid #ccc; padding: 2px 8px; border-radius: 4px; 
-  font-size: 0.8rem; cursor: pointer; color: #555; transition: all 0.2s;
-}
+.official-doc { border-left: 4px solid #003366; background-color: #fbfbfd; }
+.agency-tag { font-size: 0.75rem; color: #666; background: #eee; padding: 2px 6px; border-radius: 4px; margin-left: 8px; }
+.deadline-banner { background-color: #fff3cd; color: #856404; padding: 8px; border-radius: 4px; font-size: 0.9rem; display: flex; justify-content: space-between; align-items: center; border: 1px solid #ffeeba; }
+.urgent-badge { background: #28a745; color: white; font-weight: bold; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+.guardian-news { border-left: 4px solid #052962; }
+.guardian-news .source-tag { background-color: #052962; color: white; }
+.nyt-news { border-left: 4px solid #000000; }
+.nyt-news .source-tag { background-color: #000000; color: white; font-family: 'Georgia', serif; }
+.card-image { margin-bottom: 12px; border-radius: 4px; overflow: hidden; height: 180px; background: #f0f0f0; }
+.card-image img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.card-content { display: flex; flex-direction: column; gap: 8px; }
+.meta-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+.meta-left { font-size: 0.8em; color: #666; display: flex; gap: 8px; align-items: center; }
+.save-btn { background: none; border: 1px solid #ccc; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; cursor: pointer; color: #555; transition: all 0.2s; }
 .save-btn:hover { background: #f0f0f0; }
-.save-btn.saved {
-  background: #fffbeb; color: #b45309; border-color: #fcd34d; font-weight: bold;
-}
+.save-btn.saved { background: #fffbeb; color: #b45309; border-color: #fcd34d; font-weight: bold; }
 </style>
