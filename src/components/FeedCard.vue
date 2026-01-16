@@ -9,8 +9,9 @@ const props = defineProps(['item']);
 
 const { user } = useAuth();
 const { fetchSummary, generateAndSaveSummary } = useSummaries();
-// 1. Destructure the new togglePublic function
-const { toggleSave, togglePublic, isSaved } = useSaved(user);
+
+// 1. Destructure 'isShared'
+const { toggleSave, togglePublic, isSaved, isShared } = useSaved(user);
 
 const summary = ref(null);
 const loading = ref(false);
@@ -77,7 +78,7 @@ const getDeadlineStatus = (dateString) => {
         <span class="source-tag">{{ item.source }}</span>
         <span class="date">{{ getRelativeTime(item.pubDate) }}</span>
         
-        <span v-if="item.isPublic && item.sharedBy" class="shared-tag">
+        <span v-if="isShared(item) && item.sharedBy" class="shared-tag">
           👤 {{ item.sharedBy.split('@')[0] }}
         </span>
       </div>
@@ -86,11 +87,11 @@ const getDeadlineStatus = (dateString) => {
         <button 
           v-if="isSaved(item)"
           class="icon-btn share-btn" 
-          :class="{ 'shared': item.isPublic }"
+          :class="{ 'shared': isShared(item) }"
           @click="togglePublic(item)"
-          :title="item.isPublic ? 'Unshare from Team' : 'Share with Team'"
+          :title="isShared(item) ? 'Unshare from Team' : 'Share with Team'"
         >
-          {{ item.isPublic ? '📢 Shared' : '📢 Share' }}
+          {{ isShared(item) ? '📢 Shared' : '📢 Share' }}
         </button>
 
         <button 
@@ -148,32 +149,18 @@ const getDeadlineStatus = (dateString) => {
 </template>
 
 <style scoped>
-/* Keep existing styles, add these: */
+/* Keeping styles exactly as they were */
 .actions-right { display: flex; gap: 8px; }
-
-/* Share Button */
-.share-btn {
-  background: none; border: 1px solid #ccc; padding: 2px 8px; border-radius: 4px; 
-  font-size: 0.8rem; cursor: pointer; color: #555; transition: all 0.2s;
-}
+.share-btn { background: none; border: 1px solid #ccc; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; cursor: pointer; color: #555; transition: all 0.2s; }
 .share-btn:hover { background: #f0f0f0; }
-.share-btn.shared {
-  background: #e0e7ff; color: #3730a3; border-color: #818cf8; font-weight: bold;
-}
-
-/* Shared Tag (Next to date) */
-.shared-tag {
-  font-size: 0.75rem; background: #f3f4f6; color: #555; padding: 2px 6px; border-radius: 12px; border: 1px solid #ddd;
-}
-
-/* Your previous styles below... */
+.share-btn.shared { background: #e0e7ff; color: #3730a3; border-color: #818cf8; font-weight: bold; }
+.shared-tag { font-size: 0.75rem; background: #f3f4f6; color: #555; padding: 2px 6px; border-radius: 12px; border: 1px solid #ddd; }
 .card { border: 1px solid #ddd; padding: 15px; border-radius: 4px; background: #fff; display: flex; flex-direction: column; gap: 10px; }
 .meta-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
 .meta-left { font-size: 0.8em; color: #666; display: flex; gap: 8px; align-items: center; }
 .save-btn { background: none; border: 1px solid #ccc; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; cursor: pointer; color: #555; transition: all 0.2s; }
 .save-btn:hover { background: #f0f0f0; }
 .save-btn.saved { background: #fffbeb; color: #b45309; border-color: #fcd34d; font-weight: bold; }
-/* ... (Rest of existing CSS) ... */
 .source-tag { background: #e0f7fa; padding: 2px 5px; border-radius: 3px; color: #006064; }
 h3 { margin: 0; font-size: 1.1em; }
 p { margin: 0; color: #444; line-height: 1.4; }

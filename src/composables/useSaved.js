@@ -2,25 +2,34 @@ import { ref } from 'vue';
 import { db } from '../firebase';
 import { 
   doc, setDoc, deleteDoc, updateDoc, 
-  collection, query, where, getDocs, orderBy, limit 
+  collection, query, where, getDocs, limit 
 } from 'firebase/firestore';
 import { generateArticleId } from '../utils/hash';
 import { sanitizeForFirestore } from '../utils/firestore';
 
 const savedItems = ref([]);
-const publicItems = ref([]); // <--- NEW: Stores the team's shared items
+const publicItems = ref([]);
 const loading = ref(false);
 
 export function useSaved(user) {
   
-  const isSaved = (item) => {
-    if (!item?.link) return false;
+  // Helper to find the matching saved object from any version of the item (RSS or Saved)
+  const getSavedVersion = (item) => {
+    if (!item?.link) return null;
     const id = generateArticleId(item.link);
-    // Check if it exists in my personal saved list
-    return savedItems.value.some(i => i.id === id);
+    return savedItems.value.find(i => i.id === id);
   };
 
-  // 1. FETCH MY ITEMS
+  const isSaved = (item) => {
+    return !!getSavedVersion(item);
+  };
+
+  // NEW: Helper for UI to reactively check public status
+  const isShared = (item) => {
+    const saved = getSavedVersion(item);
+    return saved ? saved.isPublic : false;
+  };
+
   const fetchSavedItems = async () => {
     if (!user.value) return;
     loading.value = true;
@@ -39,21 +48,17 @@ export function useSaved(user) {
     }
   };
 
-  // 2. NEW: FETCH TEAM ITEMS
   const fetchPublicItems = async () => {
     loading.value = true;
     try {
-      // Query: items where isPublic == true
       const q = query(
         collection(db, "saved_items"), 
         where("isPublic", "==", true),
-        limit(50) // Safety limit
+        limit(50)
       );
       
       const snapshot = await getDocs(q);
       const items = snapshot.docs.map(doc => doc.data());
-      
-      // Sort in memory
       publicItems.value = items.sort((a, b) => new Date(b.savedAt) - new Date(a.savedAt));
     } catch (e) {
       console.error("Error fetching public items:", e);
@@ -62,7 +67,6 @@ export function useSaved(user) {
     }
   };
 
-  // 3. TOGGLE SAVE (Personal)
   const toggleSave = async (item) => {
     if (!user.value) return;
     const articleId = generateArticleId(item.link);
@@ -76,9 +80,9 @@ export function useSaved(user) {
         ...item,
         id: articleId,
         userId: user.value.uid,
-        sharedBy: user.value.email, // <--- NEW: Store who saved it
+        sharedBy: user.value.email,
         savedAt: new Date().toISOString(),
-        isPublic: false,            // <--- Default to Private
+        isPublic: false,
         loading: false, 
         error: null 
       };
@@ -89,36 +93,42 @@ export function useSaved(user) {
     }
   };
 
-  // 4. NEW: TOGGLE PUBLIC (Sharing)
+  // REFACTORED: Look up the Saved Version first!
   const togglePublic = async (item) => {
     if (!user.value) return;
-    // Only allow the owner to share
-    if (item.userId !== user.value.uid) return;
 
-    const articleId = item.id || generateArticleId(item.link);
+    // 1. Find the REAL saved item (which has userId and current isPublic status)
+    const savedItem = getSavedVersion(item);
+    
+    // Safety check: You can't share something that isn't saved.
+    if (!savedItem) return; 
+
+    // 2. Check Ownership on the SAVED copy, not the passed RSS item
+    if (savedItem.userId !== user.value.uid) return;
+
+    const articleId = savedItem.id;
     const docRef = doc(db, "saved_items", articleId);
     
-    const newStatus = !item.isPublic;
+    const newStatus = !savedItem.isPublic;
     
-    // Update Local State immediately (UI feels faster)
-    const localItem = savedItems.value.find(i => i.id === articleId);
-    if (localItem) localItem.isPublic = newStatus;
+    // 3. Update State (Reactivity will update UI instantly)
+    savedItem.isPublic = newStatus;
 
-    // Update DB
+    // 4. Update DB
     await updateDoc(docRef, { isPublic: newStatus });
     
-    // Refresh the public list so the changes appear in "Team Picks"
     if (newStatus) fetchPublicItems();
   };
 
   return {
     savedItems,
-    publicItems, // <--- Exported
+    publicItems,
     loading,
     fetchSavedItems,
-    fetchPublicItems, // <--- Exported
+    fetchPublicItems,
     toggleSave,
-    togglePublic,     // <--- Exported
-    isSaved
+    togglePublic,
+    isSaved,
+    isShared // <--- Exporting this new helper
   };
 }
