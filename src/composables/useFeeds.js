@@ -48,16 +48,37 @@ export function useFeeds(user) {
         return autoCategorize(items, categories.value);
     };
 
-    const refreshAllFeeds = async () => {
-        if (!user.value) return;
-        loading.value = true;
-        feedItems.value = [];
-        
-        const results = await Promise.all(userFeeds.value.map(f => fetchSingleFeed(f)));
-        
-        feedItems.value = results.flat().sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
-        loading.value = false;
-    };
+const fetchGuardianNews = async () => {
+    try {
+        const res = await fetch('/.netlify/functions/fetch-guardian');
+        if (!res.ok) throw new Error("Failed to fetch Guardian news");
+
+        const items = await res.json();
+        // Run them through your auto-categorizer so they get tagged "Forests", "Water", etc.
+        return autoCategorize(items, categories.value);
+    } catch (e) {
+        console.error("Guardian API Error:", e);
+        return [];
+    }
+};
+
+const refreshAllFeeds = async () => {
+    if (!user.value) return;
+    loading.value = true;
+    feedItems.value = [];
+
+    // 1. Fetch User's RSS Feeds
+    const feedPromises = userFeeds.value.map(f => fetchSingleFeed(f));
+
+    // 2. Fetch Guardian News (Run in parallel)
+    // You can make this optional, but for now let's just include it
+    const guardianPromise = fetchGuardianNews();
+
+    const results = await Promise.all([...feedPromises, guardianPromise]);
+
+    feedItems.value = results.flat().sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
+    loading.value = false;
+};
 
     const loadUserPreferences = async () => {
         if (!user.value) return;
@@ -157,32 +178,92 @@ export function useFeeds(user) {
         return querySnapshot.docs.map(doc => doc.data());
     };
 
-    const addCategory = async (name, keywordsString) => {
+    const syncBucketToPublicLibrary = async (bucket) => {
+        // Create a unique ID based on the name (simple hash)
+        const bucketId = generateArticleId(bucket.name); 
+        const docRef = doc(db, 'public_buckets', bucketId);
+
+        if (bucket.isPublic) {
+            await setDoc(docRef, {
+                name: bucket.name,
+                keywords: bucket.keywords,
+                sharedBy: user.value ? user.value.email : 'Anonymous',
+                updatedAt: new Date()
+            }, { merge: true });
+        } else {
+            await deleteDoc(docRef);
+        }
+    };
+
+    const fetchPublicBuckets = async () => {
+        const querySnapshot = await getDocs(collection(db, "public_buckets"));
+        return querySnapshot.docs.map(doc => doc.data());
+    };
+
+    const addCategory = async (name, keywordsString, isPublic = false) => {
         if (!user.value) return;
+        
+        // Check for duplicates
+        if (categories.value.some(c => c.name === name)) return;
+
         const keywords = keywordsString.split(',').map(k => k.trim()).filter(k => k);
-        categories.value.push({ name, keywords });
+        const newCat = { name, keywords, isPublic };
+        
+        categories.value.push(newCat);
+        
         await updateDoc(doc(db, "users", user.value.uid), { categories: categories.value });
+        
+        if (isPublic) {
+            await syncBucketToPublicLibrary(newCat);
+        }
+
         feedItems.value = autoCategorize(feedItems.value, categories.value);
     };
 
-    const editCategory = async (originalName, newName, newKeywordsString) => {
+    const editCategory = async (originalName, newName, newKeywordsString, isPublic) => {
         if (!user.value) return;
         const index = categories.value.findIndex(c => c.name === originalName);
         if (index === -1) return;
 
+        const oldCat = categories.value[index];
         const keywords = newKeywordsString.split(',').map(k => k.trim()).filter(k => k);
-        categories.value[index] = { name: newName, keywords };
+        
+        const updatedCat = { name: newName, keywords, isPublic };
+        categories.value[index] = updatedCat;
 
         await updateDoc(doc(db, "users", user.value.uid), { categories: categories.value });
+
+        // Handle Public Sync
+        // If name changed or public status changed, we need to sync
+        if (oldCat.isPublic !== isPublic || (isPublic && oldCat.name !== newName) || (isPublic && oldCat.keywords !== keywords)) {
+            // If name changed, we might need to delete the old ID from public library, but for now let's just add the new one
+            // Ideally: if (oldCat.name !== newName && oldCat.isPublic) deleteOldPublicBucket(oldCat.name);
+            await syncBucketToPublicLibrary(updatedCat);
+        }
+        
+        // If turning OFF public, remove it
+        if (oldCat.isPublic && !isPublic) {
+             const oldId = generateArticleId(oldCat.name);
+             await deleteDoc(doc(db, 'public_buckets', oldId));
+        }
+
         feedItems.value = autoCategorize(feedItems.value, categories.value);
     };
 
     const removeCategory = async (name) => {
         if (!user.value) return;
+        
+        const catToRemove = categories.value.find(c => c.name === name);
+        if (catToRemove && catToRemove.isPublic) {
+            const oldId = generateArticleId(catToRemove.name);
+            await deleteDoc(doc(db, 'public_buckets', oldId));
+        }
+
         categories.value = categories.value.filter(c => c.name !== name);
         await updateDoc(doc(db, "users", user.value.uid), { categories: categories.value });
         feedItems.value = autoCategorize(feedItems.value, categories.value);
     };
+
 
 const importOPML = async (file) => {
         if (!user.value || !file) return;
@@ -225,6 +306,6 @@ const importOPML = async (file) => {
         feedItems, userFeeds, categories, loading,
         loadUserPreferences, addFeed, removeFeed, updateFeed,
         addCategory, editCategory, removeCategory, refreshAllFeeds,
-        importOPML, exportOPML, fetchPublicFeeds,
+        importOPML, exportOPML, fetchPublicFeeds, fetchPublicBuckets,
     };
 }

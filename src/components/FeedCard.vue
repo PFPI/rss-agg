@@ -42,7 +42,7 @@ const getDeadlineStatus = (dateString) => {
 </script>
 
 <template>
-  <article class="card">
+  <article class="card" :class="{ 'official-doc': item.isOfficial, 'guardian-news': item.source === 'The Guardian' }">
     <div class="meta">
       <span class="source-tag">{{ item.source }}</span>
       <span class="date">{{ formatDistanceToNow(item.pubDate) }} ago</span>
@@ -148,5 +148,13 @@ p { margin: 0; color: #444; line-height: 1.4; }
   border-radius: 4px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+.guardian-news {
+  border-left: 4px solid #052962; /* Guardian Navy Blue */
+}
+.guardian-news .source-tag {
+  background-color: #052962;
+  color: white;
 }
 </style>
