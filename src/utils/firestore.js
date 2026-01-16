@@ -4,14 +4,20 @@
  * This helper converts all 'undefined' values to 'null' (which is allowed).
  */
 export const sanitizeForFirestore = (obj) => {
+  // 1. THE FIX: Catch scalar 'undefined' immediately
+  if (obj === undefined) {
+    return null;
+  }
+
   if (Array.isArray(obj)) {
     return obj.map(v => sanitizeForFirestore(v));
   } else if (obj !== null && typeof obj === 'object') {
     return Object.keys(obj).reduce((acc, key) => {
-      const value = obj[key];
-      acc[key] = value === undefined ? null : sanitizeForFirestore(value);
+      // We can now simplify this because the recursive call handles the null conversion
+      acc[key] = sanitizeForFirestore(obj[key]);
       return acc;
     }, {});
   }
+  
   return obj;
 };

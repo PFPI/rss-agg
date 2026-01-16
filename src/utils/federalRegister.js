@@ -43,14 +43,15 @@ export const fetchFederalRegisterDocs = async (searchUrl) => {
     if (!data || !data.results) return [];
 
     return data.results.map(doc => ({
+      id: doc.document_number,
       title: doc.title,
       link: doc.html_url,
       description: doc.abstract || doc.excerpt,
       pubDate: doc.publication_date,
       source: 'Federal Register',
       sourceUrl: searchUrl,
-      dueDate: doc.comment_date, 
-      agency: doc.agencies?.map(a => a.name).join(', '),
+      dueDate: doc.comment_date || doc.effective_on,
+      agency: doc.agencies?.[0]?.raw_name || doc.agencies?.[0]?.name || '',
       isOfficial: true 
     }));
 
