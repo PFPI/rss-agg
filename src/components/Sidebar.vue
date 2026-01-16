@@ -2,7 +2,7 @@
 import SidebarSources from './SidebarSources.vue';
 import SidebarBuckets from './SidebarBuckets.vue';
 
-defineProps(['feeds', 'loading', 'hiddenFeeds', 'categories']);
+defineProps(['feeds', 'loading', 'hiddenFeeds', 'categories', 'newsFeeds']);
 defineEmits([
   'add-feed', 'remove-feed', 'refresh', 'toggle-feed', 
   'add-category', 'remove-category', 'edit-category', 'update-feed'
@@ -12,15 +12,16 @@ defineEmits([
 <template>
   <div class="sidebar-container">
 <SidebarSources 
-  :feeds="feeds"
-  :hidden-feeds="hiddenFeeds"
-  @add-feed="$emit('add-feed', $event)"
-  @remove-feed="$emit('remove-feed', $event)"
-  @toggle-feed="$emit('toggle-feed', $event)"
-  @update-feed="(u, n, p) => $emit('update-feed', u, n, p)" 
-  @import-opml="$emit('import-opml', $event)"  
-  @export-opml="$emit('export-opml')"
-/>
+      :feeds="feeds"
+      :news-feeds="newsFeeds" 
+      :hidden-feeds="hiddenFeeds"
+      @add-feed="$emit('add-feed', $event)"
+      @remove-feed="$emit('remove-feed', $event)"
+      @toggle-feed="$emit('toggle-feed', $event)"
+      @update-feed="(u, n, p) => $emit('update-feed', u, n, p)" 
+      @import-opml="$emit('import-opml', $event)"  
+      @export-opml="$emit('export-opml')"
+    />
 
     <button class="refresh-btn" @click="$emit('refresh')" :disabled="loading">
       {{ loading ? 'Updating...' : 'Refresh All' }}

@@ -8,6 +8,11 @@ import { useFeeds } from '../composables/useFeeds';
 import Sidebar from '../components/Sidebar.vue';
 import FeedStream from '../components/FeedStream.vue'; // <--- New Import
 
+const systemFeeds = [
+  { name: 'The Guardian', url: 'https://www.theguardian.com/us/environment' },
+  { name: 'New York Times', url: 'https://www.nytimes.com/section/climate' }
+];
+
 const { user, logout } = useAuth();
 const { 
   feedItems, 
@@ -120,6 +125,7 @@ watch(user, (newUser) => {
     <main>
 <Sidebar 
   :feeds="userFeeds" 
+  :news-feeds="systemFeeds" 
   :categories="categories"
   :hidden-feeds="hiddenFeeds"
   :loading="loading" 

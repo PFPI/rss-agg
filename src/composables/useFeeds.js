@@ -62,21 +62,36 @@ const fetchGuardianNews = async () => {
     }
 };
 
+const fetchNYTNews = async () => {
+    try {
+        const res = await fetch('/.netlify/functions/fetch-nyt');
+        if (!res.ok) throw new Error("Failed to fetch NYT news");
+        const items = await res.json();
+        return autoCategorize(items, categories.value);
+    } catch (e) {
+        console.error("NYT API Error:", e);
+        return [];
+    }
+};
+
 const refreshAllFeeds = async () => {
     if (!user.value) return;
     loading.value = true;
     feedItems.value = [];
 
-    // 1. Fetch User's RSS Feeds
-    const feedPromises = userFeeds.value.map(f => fetchSingleFeed(f));
+const [rssResults, guardianResults, nytResults] = await Promise.all([
+        Promise.all(userFeeds.value.map(f => fetchSingleFeed(f))),
+        fetchGuardianNews(),
+        fetchNYTNews() // <--- Add this
+    ]);
+    
+    const allItems = [
+        ...rssResults.flat(), 
+        ...(guardianResults || []), 
+        ...(nytResults || []) // <--- Add this
+    ];
 
-    // 2. Fetch Guardian News (Run in parallel)
-    // You can make this optional, but for now let's just include it
-    const guardianPromise = fetchGuardianNews();
-
-    const results = await Promise.all([...feedPromises, guardianPromise]);
-
-    feedItems.value = results.flat().sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
+    feedItems.value = allItems.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
     loading.value = false;
 };
 

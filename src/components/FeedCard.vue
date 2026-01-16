@@ -50,7 +50,17 @@ const getDeadlineStatus = (dateString) => {
 </script>
 
 <template>
-  <article class="card" :class="{ 'official-doc': item.isOfficial, 'guardian-news': item.source === 'The Guardian' }">
+  <article 
+    class="card" 
+    :class="{ 
+      'official-doc': item.isOfficial, 
+      'guardian-news': item.source === 'The Guardian',
+      'nyt-news': item.source === 'New York Times'
+    }"
+  >
+  <div v-if="item.image" class="card-image">
+      <img :src="item.image" alt="Article Thumbnail" loading="lazy" />
+    </div>
     <div class="meta">
       <span class="source-tag">{{ item.source }}</span>
       <span class="date">{{ formatDistanceToNow(item.pubDate) }} ago</span>
@@ -164,5 +174,37 @@ p { margin: 0; color: #444; line-height: 1.4; }
 .guardian-news .source-tag {
   background-color: #052962;
   color: white;
+}
+/* NEW: NYT Style (Classic Black) */
+.nyt-news {
+  border-left: 4px solid #000000;
+}
+.nyt-news .source-tag {
+  background-color: #000000;
+  color: white;
+  font-family: 'Georgia', serif; /* Optional: adds that newspaper feel */
+}
+
+/* NEW: Image Styling */
+.card-image {
+  margin-bottom: 12px;
+  border-radius: 4px;
+  overflow: hidden;
+  height: 180px; /* Fixed height for consistency */
+  background: #f0f0f0;
+}
+
+.card-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* Ensures image fills the box without stretching */
+  display: block;
+}
+
+/* Update .card-content to handle layout */
+.card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 </style>
