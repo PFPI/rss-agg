@@ -21,6 +21,7 @@ export const handler = async function (event, context) {
     
     // Transform to your app's standard format
     const items = data.response.results.map(article => ({
+        id: article.id,
       title: article.webTitle,
       link: article.webUrl,
       // Use trailText (short summary) or fallback to blank

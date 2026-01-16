@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import { formatDistanceToNow, isPast, parseISO } from 'date-fns';
 import { useSummaries } from '../composables/useSummaries'; // Import logic
 
@@ -12,12 +12,20 @@ const loading = ref(false);
 const checkingCache = ref(true);
 const error = ref(null);
 
-onMounted(async () => {
-  // Logic is now abstracted away
+const loadSummary = async () => {
+  // Reset state first!
+  summary.value = null;
+  error.value = null;
+  checkingCache.value = true;
+
   const cached = await fetchSummary(props.item);
   if (cached) summary.value = cached;
+  
   checkingCache.value = false;
-});
+};
+
+onMounted(loadSummary);
+watch(() => props.item, loadSummary);
 
 const handleSummarize = async () => {
   loading.value = true;
