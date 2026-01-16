@@ -2,10 +2,14 @@
 import { ref, onMounted, watch } from 'vue';
 import { formatDistanceToNow, isPast, parseISO } from 'date-fns';
 import { useSummaries } from '../composables/useSummaries'; // Import logic
-
+import { useSaved } from '../composables/useSaved';
+import { useAuth } from '../composables/useAuth';
 
 const props = defineProps(['item']);
+const { user } = useAuth();
 const { fetchSummary, generateAndSaveSummary } = useSummaries(); // Init
+const { toggleSave, isSaved } = useSaved(user);
+
 
 const summary = ref(null);
 const loading = ref(false);
@@ -32,7 +36,15 @@ const handleSummarize = async () => {
   error.value = null;
 
   try {
+    // A. Generate the Summary
     summary.value = await generateAndSaveSummary(props.item);
+    
+    // B. Auto-Save the Article (if not already saved)
+    // This ensures the article reference sticks around in the "Saved" tab
+    if (!isSaved(props.item)) {
+      await toggleSave(props.item);
+    }
+
   } catch (e) {
     error.value = "Could not generate summary. Try again.";
     console.error(e);
@@ -61,10 +73,22 @@ const getDeadlineStatus = (dateString) => {
   <div v-if="item.image" class="card-image">
       <img :src="item.image" alt="Article Thumbnail" loading="lazy" />
     </div>
-    <div class="meta">
-      <span class="source-tag">{{ item.source }}</span>
-      <span class="date">{{ formatDistanceToNow(item.pubDate) }} ago</span>
-      <span v-if="item.agency" class="agency-tag">{{ item.agency }}</span>
+
+<div class="meta-header">
+      <div class="meta-left">
+        <span class="source-tag">{{ item.source }}</span>
+        <span class="date">{{ formatDistanceToNow(new Date(item.pubDate)) }} ago</span>
+        <span v-if="item.agency" class="agency-tag">{{ item.agency }}</span>
+      </div>
+      
+      <button 
+        class="icon-btn save-btn" 
+        @click="toggleSave(item)" 
+        :class="{ 'saved': isSaved(item) }"
+        :title="isSaved(item) ? 'Remove from Saved' : 'Save for Later'"
+      >
+        {{ isSaved(item) ? '★ Saved' : '☆ Save' }}
+      </button>
     </div>
 
     <div v-if="item.dueDate" class="deadline-banner">
@@ -206,5 +230,25 @@ p { margin: 0; color: #444; line-height: 1.4; }
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.meta-header {
+  display: flex; 
+  justify-content: space-between; 
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+.meta-left {
+  font-size: 0.8em; color: #666; display: flex; gap: 8px; align-items: center;
+}
+
+/* Save Button Styles */
+.save-btn {
+  background: none; border: 1px solid #ccc; padding: 2px 8px; border-radius: 4px; 
+  font-size: 0.8rem; cursor: pointer; color: #555; transition: all 0.2s;
+}
+.save-btn:hover { background: #f0f0f0; }
+.save-btn.saved {
+  background: #fffbeb; color: #b45309; border-color: #fcd34d; font-weight: bold;
 }
 </style>
