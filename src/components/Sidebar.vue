@@ -28,10 +28,10 @@ defineEmits([
 
     <hr class="divider" />
 
-    <SidebarBuckets 
+<SidebarBuckets 
       :categories="categories"
       @add-category="(n, k) => $emit('add-category', n, k)"
-      @edit-category="(o, n, k) => $emit('edit-category', o, n, k)"
+      @edit-category="(o, n, k, p) => $emit('edit-category', o, n, k, p)"
       @remove-category="$emit('remove-category', $event)"
     />
   </div>
