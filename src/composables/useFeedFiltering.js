@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue';
 
-export function useFeedFiltering(feedItems, savedItems) {
+export function useFeedFiltering(feedItems, savedItems, publicItems) {
   // --- STATE ---
   const searchQuery = ref('');
   const hiddenFeeds = ref([]); 
@@ -29,15 +29,21 @@ export function useFeedFiltering(feedItems, savedItems) {
   // --- LOGIC ---
   const filteredItems = computed(() => {
     // 1. CHOOSE SOURCE
-    let items = activeTab.value === 'Saved' ? savedItems.value : feedItems.value;
-
+    let items;
+    if (activeTab.value === 'Saved') {
+      items = savedItems.value;
+    } else if (activeTab.value === 'Team') {
+      items = publicItems.value || []; // Handle Team Tab
+    } else {
+      items = feedItems.value;
+    }
     // 2. FILTER HIDDEN
-    if (activeTab.value !== 'Saved' && hiddenFeeds.value.length > 0) {
-      items = items.filter(item => !hiddenFeeds.value.includes(item.sourceUrl));
+if (activeTab.value !== 'Saved' && activeTab.value !== 'Team' && hiddenFeeds.value.length > 0) {
+       items = items.filter(item => !hiddenFeeds.value.includes(item.sourceUrl));
     }
 
     // 3. FILTER CATEGORY
-    if (activeTab.value !== 'All' && activeTab.value !== 'Saved') {
+ if (activeTab.value !== 'All' && activeTab.value !== 'Saved' && activeTab.value !== 'Team') {
       items = items.filter(item => item.categories && item.categories.includes(activeTab.value));
     }
 

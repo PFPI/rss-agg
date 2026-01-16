@@ -13,39 +13,21 @@ import FeedStream from '../components/FeedStream.vue';
 
 const { user, logout } = useAuth();
 const router = useRouter();
-
 const { 
-  feedItems, 
-  userFeeds, 
-  categories,
-  loading: feedsLoading, 
-  systemFeeds,
-  loadUserPreferences, 
-  addFeed, 
-  removeFeed, 
-  addCategory,
-  editCategory,
-  removeCategory,
-  refreshAllFeeds,
-  importOPML,
-  exportOPML, 
-  updateFeed, 
+  feedItems, userFeeds, categories, loading: feedsLoading, systemFeeds,
+  loadUserPreferences, addFeed, removeFeed, addCategory, editCategory, 
+  removeCategory, refreshAllFeeds, importOPML, exportOPML, updateFeed 
 } = useFeeds(user);
-const { savedItems, fetchSavedItems, loading: savedLoading } = useSaved(user);
 
-// 2. USE THE COMPOSABLE
-// We pass the raw data sources (feedItems, savedItems) into the filtering brain.
+// 1. Destructure publicItems and fetchPublicItems
+const { savedItems, publicItems, fetchSavedItems, fetchPublicItems, loading: savedLoading } = useSaved(user);
+
+// 2. Pass publicItems to the filter engine
 const {
-  searchQuery,
-  hiddenFeeds,  // <--- This must be the ONLY definition of hiddenFeeds
-  activeTab,
-  sortBy,
-  sortOrder,
-  currentCategory,
-  filteredItems,
-  toggleFeed,
-  toggleSortOrder
-} = useFeedFiltering(feedItems, savedItems);
+  searchQuery, hiddenFeeds, activeTab, sortBy, sortOrder, currentCategory, 
+  filteredItems, toggleFeed, toggleSortOrder
+} = useFeedFiltering(feedItems, savedItems, publicItems); // <--- Pass publicItems here!
+
 
 // --- AUTH & WATCHERS ---
 const handleLogout = async () => {
@@ -56,8 +38,15 @@ watch(user, async (newUser) => {
   if (newUser) {
     await loadUserPreferences();
     await fetchSavedItems();
+    await fetchPublicItems(); // <--- Fetch team items on load
   }
 }, { immediate: true });
+
+// 3. Watch for tab switch to 'Team'
+watch(activeTab, (newTab) => {
+  if (newTab === 'Saved') fetchSavedItems();
+  if (newTab === 'Team') fetchPublicItems(); // <--- Refresh when clicking Team tab
+});
 
 watch(activeTab, (newTab) => {
   if (newTab === 'Saved') fetchSavedItems();
@@ -96,13 +85,9 @@ watch(activeTab, (newTab) => {
       <div class="content">
         <div class="controls-row">
           <div class="tabs">
-            <button :class="['tab', { active: activeTab === 'All' }]" @click="activeTab = 'All'">
-              Stream
-            </button>
-            
-            <button :class="['tab', { active: activeTab === 'Saved' }]" @click="activeTab = 'Saved'">
-              ★ Saved
-            </button>
+            <button :class="['tab', { active: activeTab === 'All' }]" @click="activeTab = 'All'">Stream</button>
+            <button :class="['tab', { active: activeTab === 'Saved' }]" @click="activeTab = 'Saved'">★ Saved</button>
+            <button :class="['tab', { active: activeTab === 'Team' }]" @click="activeTab = 'Team'">👥 Team Picks</button>
             
             <div class="vertical-divider"></div>
 

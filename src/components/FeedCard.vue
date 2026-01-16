@@ -1,6 +1,5 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue';
-// 1. ADD 'isValid' to imports
 import { formatDistanceToNow, isPast, parseISO, isValid } from 'date-fns';
 import { useSummaries } from '../composables/useSummaries';
 import { useSaved } from '../composables/useSaved';
@@ -10,18 +9,18 @@ const props = defineProps(['item']);
 
 const { user } = useAuth();
 const { fetchSummary, generateAndSaveSummary } = useSummaries();
-const { toggleSave, isSaved } = useSaved(user);
+// 1. Destructure the new togglePublic function
+const { toggleSave, togglePublic, isSaved } = useSaved(user);
 
 const summary = ref(null);
 const loading = ref(false);
 const checkingCache = ref(true);
 const error = ref(null);
 
-// 2. NEW: Safe Date Formatter
 const getRelativeTime = (dateString) => {
   if (!dateString) return '';
   const date = new Date(dateString);
-  if (!isValid(date)) return ''; // Return empty string if invalid
+  if (!isValid(date)) return ''; 
   return formatDistanceToNow(date) + ' ago';
 };
 
@@ -29,10 +28,8 @@ const loadSummary = async () => {
   summary.value = null;
   error.value = null;
   checkingCache.value = true;
-
   const cached = await fetchSummary(props.item);
   if (cached) summary.value = cached;
-  
   checkingCache.value = false;
 };
 
@@ -42,17 +39,13 @@ watch(() => props.item, loadSummary);
 const handleSummarize = async () => {
   loading.value = true;
   error.value = null;
-
   try {
     summary.value = await generateAndSaveSummary(props.item);
-    
     if (!isSaved(props.item)) {
       await toggleSave(props.item);
     }
-
   } catch (e) {
     error.value = "Could not generate summary. Try again.";
-    console.error(e);
   } finally {
     loading.value = false;
   }
@@ -82,20 +75,33 @@ const getDeadlineStatus = (dateString) => {
     <div class="meta-header">
       <div class="meta-left">
         <span class="source-tag">{{ item.source }}</span>
-        
         <span class="date">{{ getRelativeTime(item.pubDate) }}</span>
         
-        <span v-if="item.agency" class="agency-tag">{{ item.agency }}</span>
+        <span v-if="item.isPublic && item.sharedBy" class="shared-tag">
+          👤 {{ item.sharedBy.split('@')[0] }}
+        </span>
       </div>
       
-      <button 
-        class="icon-btn save-btn" 
-        @click="toggleSave(item)" 
-        :class="{ 'saved': isSaved(item) }"
-        :title="isSaved(item) ? 'Remove from Saved' : 'Save for Later'"
-      >
-        {{ isSaved(item) ? '★ Saved' : '☆ Save' }}
-      </button>
+      <div class="actions-right">
+        <button 
+          v-if="isSaved(item)"
+          class="icon-btn share-btn" 
+          :class="{ 'shared': item.isPublic }"
+          @click="togglePublic(item)"
+          :title="item.isPublic ? 'Unshare from Team' : 'Share with Team'"
+        >
+          {{ item.isPublic ? '📢 Shared' : '📢 Share' }}
+        </button>
+
+        <button 
+          class="icon-btn save-btn" 
+          @click="toggleSave(item)" 
+          :class="{ 'saved': isSaved(item) }"
+          :title="isSaved(item) ? 'Remove from Saved' : 'Save for Later'"
+        >
+          {{ isSaved(item) ? '★ Saved' : '☆ Save' }}
+        </button>
+      </div>
     </div>
 
     <div v-if="item.dueDate" class="deadline-banner">
@@ -142,9 +148,32 @@ const getDeadlineStatus = (dateString) => {
 </template>
 
 <style scoped>
-/* Keep existing styles */
+/* Keep existing styles, add these: */
+.actions-right { display: flex; gap: 8px; }
+
+/* Share Button */
+.share-btn {
+  background: none; border: 1px solid #ccc; padding: 2px 8px; border-radius: 4px; 
+  font-size: 0.8rem; cursor: pointer; color: #555; transition: all 0.2s;
+}
+.share-btn:hover { background: #f0f0f0; }
+.share-btn.shared {
+  background: #e0e7ff; color: #3730a3; border-color: #818cf8; font-weight: bold;
+}
+
+/* Shared Tag (Next to date) */
+.shared-tag {
+  font-size: 0.75rem; background: #f3f4f6; color: #555; padding: 2px 6px; border-radius: 12px; border: 1px solid #ddd;
+}
+
+/* Your previous styles below... */
 .card { border: 1px solid #ddd; padding: 15px; border-radius: 4px; background: #fff; display: flex; flex-direction: column; gap: 10px; }
-.meta { font-size: 0.8em; color: #666; display: flex; justify-content: space-between; }
+.meta-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+.meta-left { font-size: 0.8em; color: #666; display: flex; gap: 8px; align-items: center; }
+.save-btn { background: none; border: 1px solid #ccc; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; cursor: pointer; color: #555; transition: all 0.2s; }
+.save-btn:hover { background: #f0f0f0; }
+.save-btn.saved { background: #fffbeb; color: #b45309; border-color: #fcd34d; font-weight: bold; }
+/* ... (Rest of existing CSS) ... */
 .source-tag { background: #e0f7fa; padding: 2px 5px; border-radius: 3px; color: #006064; }
 h3 { margin: 0; font-size: 1.1em; }
 p { margin: 0; color: #444; line-height: 1.4; }
@@ -172,10 +201,4 @@ p { margin: 0; color: #444; line-height: 1.4; }
 .nyt-news .source-tag { background-color: #000000; color: white; font-family: 'Georgia', serif; }
 .card-image { margin-bottom: 12px; border-radius: 4px; overflow: hidden; height: 180px; background: #f0f0f0; }
 .card-image img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.card-content { display: flex; flex-direction: column; gap: 8px; }
-.meta-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
-.meta-left { font-size: 0.8em; color: #666; display: flex; gap: 8px; align-items: center; }
-.save-btn { background: none; border: 1px solid #ccc; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; cursor: pointer; color: #555; transition: all 0.2s; }
-.save-btn:hover { background: #f0f0f0; }
-.save-btn.saved { background: #fffbeb; color: #b45309; border-color: #fcd34d; font-weight: bold; }
 </style>
