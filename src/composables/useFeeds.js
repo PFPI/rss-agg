@@ -1,19 +1,64 @@
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { db } from '../firebase';
-import { doc, setDoc, getDoc, updateDoc, collection, getDocs, deleteDoc, arrayUnion, arrayRemove } from "firebase/firestore";
-import { parseXML, autoCategorize } from '../utils/feedProcessor'; // Import logic
+import { doc, setDoc, getDoc, updateDoc, collection, getDocs, deleteDoc } from "firebase/firestore";
+import { parseXML, autoCategorize } from '../utils/feedProcessor';
 import { parseOPML, downloadOPML } from '../utils/opml';
 import { isFederalRegisterUrl, fetchFederalRegisterDocs } from '../utils/federalRegister';
 import { generateArticleId } from '../utils/hash';
 
+// --- STATE ---
 const feedItems = ref([]);
 const userFeeds = ref([]);
 const categories = ref([]);
 const loading = ref(false);
 
+// --- FETCHERS (Internal) ---
+const fetchGuardianNews = async () => {
+    try {
+        const res = await fetch('/.netlify/functions/fetch-guardian');
+        if (!res.ok) throw new Error("Failed to fetch Guardian news");
+        return await res.json();
+    } catch (e) {
+        console.error("Guardian API Error:", e);
+        return [];
+    }
+};
+
+const fetchNYTNews = async () => {
+    try {
+        const res = await fetch('/.netlify/functions/fetch-nyt');
+        if (!res.ok) throw new Error("Failed to fetch NYT news");
+        return await res.json();
+    } catch (e) {
+        console.error("NYT API Error:", e);
+        return [];
+    }
+};
+
+// --- SYSTEM FEED CONFIGURATION ---
+// 1. Define them in one place (Name + URL + The Function to call)
+const SYSTEM_FEEDS_CONFIG = [
+    { 
+        name: 'The Guardian', 
+        url: 'https://www.theguardian.com/us/environment', 
+        fetcher: fetchGuardianNews 
+    },
+    { 
+        name: 'New York Times', 
+        url: 'https://www.nytimes.com/section/climate', 
+        fetcher: fetchNYTNews 
+    }
+];
+
+// 2. Expose the list for the UI (Sidebar) to render
+// We computed this so if we ever add dynamic system feeds, it reacts.
+const systemFeeds = computed(() => SYSTEM_FEEDS_CONFIG.map(f => ({
+    name: f.name,
+    url: f.url
+})));
+
 export function useFeeds(user) {
 
-    // Helper: Normalize legacy string feeds to objects
     const normalizeFeeds = (feeds) => {
         return feeds.map(f => typeof f === 'string' ? { url: f, name: f, isPublic: false } : f);
     };
@@ -40,7 +85,6 @@ export function useFeeds(user) {
             }
         }
 
-        // Override the "Source" name if the user gave it a custom label
         if (name && name !== url) {
             items = items.map(i => ({ ...i, source: name }));
         }
@@ -48,52 +92,35 @@ export function useFeeds(user) {
         return autoCategorize(items, categories.value);
     };
 
-const fetchGuardianNews = async () => {
-    try {
-        const res = await fetch('/.netlify/functions/fetch-guardian');
-        if (!res.ok) throw new Error("Failed to fetch Guardian news");
+    const refreshAllFeeds = async () => {
+        if (!user.value) return;
+        loading.value = true;
+        feedItems.value = [];
 
-        const items = await res.json();
-        // Run them through your auto-categorizer so they get tagged "Forests", "Water", etc.
-        return autoCategorize(items, categories.value);
-    } catch (e) {
-        console.error("Guardian API Error:", e);
-        return [];
-    }
-};
+        // 3. REFACTORED: Dynamic Fetching
+        // We fetch user RSS feeds AND System feeds in parallel
+        const rssPromises = userFeeds.value.map(f => fetchSingleFeed(f));
+        const systemPromises = SYSTEM_FEEDS_CONFIG.map(f => f.fetcher());
 
-const fetchNYTNews = async () => {
-    try {
-        const res = await fetch('/.netlify/functions/fetch-nyt');
-        if (!res.ok) throw new Error("Failed to fetch NYT news");
-        const items = await res.json();
-        return autoCategorize(items, categories.value);
-    } catch (e) {
-        console.error("NYT API Error:", e);
-        return [];
-    }
-};
+        const [rssResults, ...systemResults] = await Promise.all([
+            Promise.all(rssPromises),
+            ...systemPromises
+        ]);
 
-const refreshAllFeeds = async () => {
-    if (!user.value) return;
-    loading.value = true;
-    feedItems.value = [];
+        // Flatten everything
+        let allItems = rssResults.flat();
+        
+        // Add System Results (which are arrays)
+        systemResults.forEach(res => {
+            if (Array.isArray(res)) allItems = [...allItems, ...res];
+        });
+        
+        // Auto-categorize system feeds just in case
+        allItems = autoCategorize(allItems, categories.value);
 
-const [rssResults, guardianResults, nytResults] = await Promise.all([
-        Promise.all(userFeeds.value.map(f => fetchSingleFeed(f))),
-        fetchGuardianNews(),
-        fetchNYTNews() // <--- Add this
-    ]);
-    
-    const allItems = [
-        ...rssResults.flat(), 
-        ...(guardianResults || []), 
-        ...(nytResults || []) // <--- Add this
-    ];
-
-    feedItems.value = allItems.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
-    loading.value = false;
-};
+        feedItems.value = allItems.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
+        loading.value = false;
+    };
 
     const loadUserPreferences = async () => {
         if (!user.value) return;
@@ -106,7 +133,6 @@ const [rssResults, guardianResults, nytResults] = await Promise.all([
             categories.value = data.categories || [];
             refreshAllFeeds();
         } else {
-            // Init new user
             await setDoc(docRef, { feeds: [], categories: [] });
             userFeeds.value = [];
             categories.value = [];
@@ -119,26 +145,21 @@ const [rssResults, guardianResults, nytResults] = await Promise.all([
     };
 
     const addFeed = async (url, name = null) => {
-        // Prevent duplicates
         if (userFeeds.value.some(f => f.url === url)) return;
-
         const newFeed = { 
             url, 
-            name: name || url, // Default name is URL until edited
+            name: name || url, 
             isPublic: false 
         };
-
         userFeeds.value.push(newFeed);
         await saveUserFeeds();
         refreshAllFeeds();
     };
 
     const removeFeed = async (feedToRemove) => {
-        // If it was public, remove it from the public library too
         if (feedToRemove.isPublic) {
-            await togglePublic(feedToRemove, false); // Turn off sharing first
+            await togglePublic(feedToRemove, false); 
         }
-
         userFeeds.value = userFeeds.value.filter(f => f.url !== feedToRemove.url);
         feedItems.value = feedItems.value.filter(i => i.sourceUrl !== feedToRemove.url);
         await saveUserFeeds();
@@ -154,7 +175,6 @@ const [rssResults, guardianResults, nytResults] = await Promise.all([
         userFeeds.value[feedIndex] = newFeed;
         await saveUserFeeds();
 
-        // Handle Public Library Sync
         if (oldFeed.isPublic !== newFeed.isPublic || (newFeed.isPublic && oldFeed.name !== newFeed.name)) {
             await syncToPublicLibrary(newFeed);
         }
@@ -164,8 +184,7 @@ const [rssResults, guardianResults, nytResults] = await Promise.all([
         }
     };
 
-    // --- Sharing Logic ---
-
+    // --- Sharing Logic (Public Feeds) ---
     const syncToPublicLibrary = async (feed) => {
         const feedId = generateArticleId(feed.url);
         const docRef = doc(db, 'public_feeds', feedId);
@@ -183,7 +202,6 @@ const [rssResults, guardianResults, nytResults] = await Promise.all([
     };
 
     const togglePublic = async (feed, shouldBePublic) => {
-         // Helper to safely reuse sync logic
          const updatedFeed = { ...feed, isPublic: shouldBePublic };
          await syncToPublicLibrary(updatedFeed);
     }
@@ -194,7 +212,6 @@ const [rssResults, guardianResults, nytResults] = await Promise.all([
     };
 
     const syncBucketToPublicLibrary = async (bucket) => {
-        // Create a unique ID based on the name (simple hash)
         const bucketId = generateArticleId(bucket.name); 
         const docRef = doc(db, 'public_buckets', bucketId);
 
@@ -215,23 +232,18 @@ const [rssResults, guardianResults, nytResults] = await Promise.all([
         return querySnapshot.docs.map(doc => doc.data());
     };
 
+    // --- Categories Logic ---
     const addCategory = async (name, keywordsString, isPublic = false) => {
         if (!user.value) return;
-        
-        // Check for duplicates
         if (categories.value.some(c => c.name === name)) return;
 
         const keywords = keywordsString.split(',').map(k => k.trim()).filter(k => k);
         const newCat = { name, keywords, isPublic };
         
         categories.value.push(newCat);
-        
         await updateDoc(doc(db, "users", user.value.uid), { categories: categories.value });
         
-        if (isPublic) {
-            await syncBucketToPublicLibrary(newCat);
-        }
-
+        if (isPublic) await syncBucketToPublicLibrary(newCat);
         feedItems.value = autoCategorize(feedItems.value, categories.value);
     };
 
@@ -241,22 +253,18 @@ const [rssResults, guardianResults, nytResults] = await Promise.all([
         if (index === -1) return;
 
         const oldCat = categories.value[index];
-        const keywords = newKeywordsString.split(',').map(k => k.trim()).filter(k => k);
+        const keywords = Array.isArray(newKeywordsString) 
+            ? newKeywordsString 
+            : newKeywordsString.split(',').map(k => k.trim()).filter(k => k);
         
         const updatedCat = { name: newName, keywords, isPublic };
         categories.value[index] = updatedCat;
 
         await updateDoc(doc(db, "users", user.value.uid), { categories: categories.value });
 
-        // Handle Public Sync
-        // If name changed or public status changed, we need to sync
-        if (oldCat.isPublic !== isPublic || (isPublic && oldCat.name !== newName) || (isPublic && oldCat.keywords !== keywords)) {
-            // If name changed, we might need to delete the old ID from public library, but for now let's just add the new one
-            // Ideally: if (oldCat.name !== newName && oldCat.isPublic) deleteOldPublicBucket(oldCat.name);
+        if (oldCat.isPublic !== isPublic || (isPublic && (oldCat.name !== newName || oldCat.keywords !== keywords))) {
             await syncBucketToPublicLibrary(updatedCat);
         }
-        
-        // If turning OFF public, remove it
         if (oldCat.isPublic && !isPublic) {
              const oldId = generateArticleId(oldCat.name);
              await deleteDoc(doc(db, 'public_buckets', oldId));
@@ -267,34 +275,24 @@ const [rssResults, guardianResults, nytResults] = await Promise.all([
 
     const removeCategory = async (name) => {
         if (!user.value) return;
-        
         const catToRemove = categories.value.find(c => c.name === name);
         if (catToRemove && catToRemove.isPublic) {
             const oldId = generateArticleId(catToRemove.name);
             await deleteDoc(doc(db, 'public_buckets', oldId));
         }
-
         categories.value = categories.value.filter(c => c.name !== name);
         await updateDoc(doc(db, "users", user.value.uid), { categories: categories.value });
         feedItems.value = autoCategorize(feedItems.value, categories.value);
     };
 
-
-const importOPML = async (file) => {
+    // --- OPML ---
+    const importOPML = async (file) => {
         if (!user.value || !file) return;
         try {
             loading.value = true;
             const text = await file.text();
             const newUrls = parseOPML(text);
-            
-            // Convert simple URLs to feed objects
-            const newFeedObjects = newUrls.map(url => ({ 
-                url, 
-                name: url, 
-                isPublic: false 
-            }));
-
-            // Filter out duplicates
+            const newFeedObjects = newUrls.map(url => ({ url, name: url, isPublic: false }));
             const existingUrls = new Set(userFeeds.value.map(f => f.url));
             const uniqueFeeds = newFeedObjects.filter(f => !existingUrls.has(f.url));
 
@@ -313,12 +311,11 @@ const importOPML = async (file) => {
 
     const exportOPML = () => {
         if (userFeeds.value.length === 0) return;
-        // Map back to simple strings for OPML export
         downloadOPML(userFeeds.value.map(f => f.url));
     };
 
     return {
-        feedItems, userFeeds, categories, loading,
+        feedItems, userFeeds, categories, loading, systemFeeds, // <--- Exported here
         loadUserPreferences, addFeed, removeFeed, updateFeed,
         addCategory, editCategory, removeCategory, refreshAllFeeds,
         importOPML, exportOPML, fetchPublicFeeds, fetchPublicBuckets,
