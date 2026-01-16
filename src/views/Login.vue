@@ -3,144 +3,172 @@ import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuth } from '../composables/useAuth';
 
-const { login, register } = useAuth();
-const router = useRouter();
-
 const email = ref('');
 const password = ref('');
-const isRegistering = ref(false);
-const errorMsg = ref('');
+const isRegister = ref(false);
+const error = ref('');
+const infoMessage = ref('');
+const loading = ref(false);
+const needsVerification = ref(false); // New state
 
-const handleAuth = async () => {
-  errorMsg.value = ''; // Reset error
+const router = useRouter();
+const { login, register, resendVerification } = useAuth();
+
+const handleSubmit = async () => {
+  error.value = '';
+  infoMessage.value = '';
+  loading.value = true;
+  
   try {
-    if (isRegistering.value) await register(email.value, password.value);
-    else await login(email.value, password.value);
-    router.push('/'); 
+    if (isRegister.value) {
+      // REGISTER FLOW
+      await register(email.value, password.value);
+      needsVerification.value = true; // Show verification UI immediately
+    } else {
+      // LOGIN FLOW
+      const credential = await login(email.value, password.value);
+      
+      // Check if verified
+      if (credential.user.emailVerified) {
+        router.push('/');
+      } else {
+        needsVerification.value = true; // Stop! Show verification UI
+      }
+    }
   } catch (e) {
-    errorMsg.value = e.message;
+    // Make firebase errors readable
+    error.value = e.message.replace('Firebase: ', '').replace('auth/', '');
+  } finally {
+    loading.value = false;
   }
+};
+
+const handleResend = async () => {
+  try {
+    await resendVerification();
+    infoMessage.value = "Verification email sent! Check your spam folder.";
+  } catch (e) {
+    error.value = "Too many requests. Please wait a moment.";
+  }
+};
+
+// Reset to normal login if they clicked the wrong thing
+const backToLogin = () => {
+  needsVerification.value = false;
+  isRegister.value = false;
+  error.value = '';
+  infoMessage.value = '';
 };
 </script>
 
 <template>
-  <div class="auth-wrapper">
-    <div class="auth-box">
-      <h2>{{ isRegistering ? 'Create Account' : 'Welcome Back' }}</h2>
+  <div class="login-container">
+    <div class="auth-card">
+      <div class="logo-area">
+        <h1>🌲 Forest Tracker</h1>
+      </div>
       
-      <form @submit.prevent="handleAuth" class="auth-form">
+      <div v-if="needsVerification" class="verification-state">
+        <div class="icon">✉️</div>
+        <h2>Verify your Email</h2>
+        <p>
+          We've sent a confirmation link to <strong>{{ email }}</strong>.
+          <br>Please click it to access the dashboard.
+        </p>
+
+        <div v-if="infoMessage" class="success-msg">{{ infoMessage }}</div>
+        <div v-if="error" class="error-msg">{{ error }}</div>
+
+        <button class="primary-btn" @click="handleResend" :disabled="loading">
+          Resend Verification Email
+        </button>
+        
+        <button class="text-btn" @click="backToLogin">
+          Back to Login
+        </button>
+      </div>
+
+      <form v-else @submit.prevent="handleSubmit">
+        <h2>{{ isRegister ? 'Create Account' : 'Sign In' }}</h2>
+        
         <div class="input-group">
           <label>Email</label>
-          <input v-model="email" type="email" placeholder="name@example.com" required />
+          <input type="email" v-model="email" required placeholder="name@pfpi.net" />
         </div>
         
         <div class="input-group">
           <label>Password</label>
-          <input v-model="password" type="password" placeholder="••••••••" required />
+          <input type="password" v-model="password" required placeholder="••••••" />
         </div>
 
-        <button type="submit" class="primary-btn">
-          {{ isRegistering ? 'Sign Up' : 'Log In' }}
+        <div v-if="error" class="error-msg">{{ error }}</div>
+
+        <button type="submit" class="primary-btn" :disabled="loading">
+          {{ loading ? 'Please wait...' : (isRegister ? 'Sign Up' : 'Login') }}
         </button>
+
+        <p class="toggle-text">
+          {{ isRegister ? 'Already have an account?' : 'Need an account?' }}
+          <a href="#" @click.prevent="isRegister = !isRegister">
+            {{ isRegister ? 'Login' : 'Register' }}
+          </a>
+        </p>
       </form>
-
-      <div class="toggle-link">
-        <button class="link-btn" @click="isRegistering = !isRegistering">
-          {{ isRegistering ? 'Already have an account? Log in' : 'New here? Create account' }}
-        </button>
-      </div>
-
-      <p v-if="errorMsg" class="error">{{ errorMsg }}</p>
     </div>
   </div>
 </template>
 
 <style scoped>
-.auth-wrapper {
+.login-container {
+  min-height: 100vh;
   display: flex;
-  justify-content: center;
   align-items: center;
-  min-height: 80vh; /* Centers vertically too */
+  justify-content: center;
+  background-color: #f3f4f6;
+  padding: 20px;
 }
 
-.auth-box {
+.auth-card {
+  background: white;
+  padding: 40px;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
   width: 100%;
   max-width: 400px;
-  padding: 40px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  background: white;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-}
-
-h2 {
   text-align: center;
-  margin-bottom: 25px;
-  color: #333;
 }
 
-.auth-form {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
+.logo-area h1 { color: #059669; margin: 0 0 20px 0; font-size: 1.5rem; }
 
-.input-group {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
+h2 { margin-bottom: 20px; color: #1f2937; }
 
-.input-group label {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: #555;
-}
-
-input {
-  padding: 10px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 1rem;
-}
+.input-group { margin-bottom: 15px; text-align: left; }
+.input-group label { display: block; font-size: 0.875rem; color: #4b5563; margin-bottom: 5px; }
+.input-group input { width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; }
 
 .primary-btn {
-  background-color: #007bff;
-  color: white;
-  padding: 12px;
-  border: none;
-  border-radius: 4px;
-  font-size: 1rem;
-  font-weight: bold;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.primary-btn:hover {
-  background-color: #0056b3;
-}
-
-.toggle-link {
-  margin-top: 20px;
-  text-align: center;
-}
-
-.link-btn {
-  background: none;
-  border: none;
-  color: #007bff;
-  text-decoration: underline;
-  cursor: pointer;
-  font-size: 0.9rem;
-}
-
-.error {
-  color: #d9534f;
-  background: #f9d6d5;
+  width: 100%;
   padding: 10px;
-  border-radius: 4px;
-  margin-top: 15px;
-  text-align: center;
-  font-size: 0.9rem;
+  background-color: #059669;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 10px;
 }
+.primary-btn:hover { background-color: #047857; }
+.primary-btn:disabled { opacity: 0.7; cursor: not-allowed; }
+
+.text-btn { background: none; border: none; color: #666; cursor: pointer; margin-top: 15px; text-decoration: underline; }
+
+.error-msg { color: #dc2626; font-size: 0.875rem; margin-bottom: 10px; }
+.success-msg { color: #059669; font-size: 0.875rem; margin-bottom: 10px; background: #ecfdf5; padding: 8px; border-radius: 4px; }
+
+.toggle-text { margin-top: 20px; font-size: 0.875rem; color: #6b7280; }
+.toggle-text a { color: #059669; font-weight: 600; text-decoration: none; }
+
+/* Verification State Styles */
+.verification-state .icon { font-size: 3rem; margin-bottom: 10px; }
+.verification-state p { color: #4b5563; margin-bottom: 20px; line-height: 1.5; }
 </style>

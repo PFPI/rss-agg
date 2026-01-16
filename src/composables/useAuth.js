@@ -5,10 +5,12 @@ import {
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   signOut,
-  sendEmailVerification // <-- Import this
+  sendEmailVerification 
 } from 'firebase/auth';
 
 const user = ref(null);
+
+// 🔒 HARDCODED ALLOWLIST
 const ALLOWED_DOMAINS = ["pfpi.net", "forestdefenders.org", "forestlitigation.org"];
 
 export function useAuth() {
@@ -22,19 +24,25 @@ export function useAuth() {
 
   const login = (email, password) => signInWithEmailAndPassword(auth, email, password);
 
-  // Update Register Logic
-const register = async (email, password) => {
-
+  const register = async (email, password) => {
     const domain = email.split('@')[1]?.toLowerCase();
     if (!domain || !ALLOWED_DOMAINS.includes(domain)) {
-      throw new Error(`Registration is restricted to: ${ALLOWED_DOMAINS.join(', ')}. Please contact PFPI if you've received this message in error.`);
+      throw new Error(`Registration is restricted to: ${ALLOWED_DOMAINS.join(', ')}`);
     }
+
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     await sendEmailVerification(userCredential.user);
     return userCredential;
   };
+  
+  // NEW: Helper to resend the email
+  const resendVerification = async () => {
+    if (user.value) {
+      await sendEmailVerification(user.value);
+    }
+  };
 
   const logout = () => signOut(auth);
 
-  return { user, login, register, logout };
+  return { user, login, register, logout, resendVerification };
 }
