@@ -101,9 +101,11 @@ const handleFileChange = (event) => {
             <span v-else>✅</span>
           </button>
           
-          <span class="feed-name" :title="feed.url">
+          <span v-if="feed.isPublic" class="public-badge" title="Shared with team">👥</span>
+
+          <span class="feed-name" :title="feed.name">
             {{ feed.name }}
-            <span v-if="feed.isPublic" class="public-badge" title="Shared with team">👥</span>
+            
           </span>
         </div>
 

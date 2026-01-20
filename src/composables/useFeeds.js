@@ -35,6 +35,17 @@ const fetchNYTNews = async () => {
     }
 };
 
+const fetchCongressBills = async () => {
+    try {
+        const res = await fetch('/.netlify/functions/fetch-congress');
+        if (!res.ok) throw new Error("Failed to fetch Congress bills");
+        return await res.json();
+    } catch (e) {
+        console.error("Congress API Error:", e);
+        return [];
+    }
+};
+
 // --- SYSTEM FEED CONFIGURATION ---
 // 1. Define them in one place (Name + URL + The Function to call)
 const SYSTEM_FEEDS_CONFIG = [
@@ -47,6 +58,11 @@ const SYSTEM_FEEDS_CONFIG = [
         name: 'New York Times', 
         url: 'https://www.nytimes.com/section/climate', 
         fetcher: fetchNYTNews 
+    },
+    { 
+        name: 'US Congress',  // <--- NEW ENTRY
+        url: 'https://www.congress.gov', 
+        fetcher: fetchCongressBills 
     }
 ];
 
@@ -92,30 +108,42 @@ export function useFeeds(user) {
         return autoCategorize(items, categories.value);
     };
 
+   // ... inside src/composables/useFeeds.js
+
     const refreshAllFeeds = async () => {
         if (!user.value) return;
         loading.value = true;
         feedItems.value = [];
 
-        // 3. REFACTORED: Dynamic Fetching
-        // We fetch user RSS feeds AND System feeds in parallel
+        // 1. Fetch RSS Feeds
         const rssPromises = userFeeds.value.map(f => fetchSingleFeed(f));
-        const systemPromises = SYSTEM_FEEDS_CONFIG.map(f => f.fetcher());
 
+        // 2. Fetch System Feeds (Wrapped to Enforce URL Consistency)
+        const systemPromises = SYSTEM_FEEDS_CONFIG.map(async (config) => {
+            const items = await config.fetcher();
+            if (!Array.isArray(items)) return [];
+            
+            // THE FIX: Overwrite 'sourceUrl' to match the Config URL exactly.
+            // This ensures the "Hide" button (which uses config.url) always matches the item.
+            return items.map(item => ({
+                ...item, 
+                sourceUrl: config.url 
+            }));
+        });
+
+        // 3. Wait for all
         const [rssResults, ...systemResults] = await Promise.all([
             Promise.all(rssPromises),
             ...systemPromises
         ]);
 
-        // Flatten everything
+        // 4. Flatten and Merge
         let allItems = rssResults.flat();
         
-        // Add System Results (which are arrays)
         systemResults.forEach(res => {
             if (Array.isArray(res)) allItems = [...allItems, ...res];
         });
         
-        // Auto-categorize system feeds just in case
         allItems = autoCategorize(allItems, categories.value);
 
         feedItems.value = allItems.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
@@ -157,9 +185,7 @@ export function useFeeds(user) {
     };
 
     const removeFeed = async (feedToRemove) => {
-        if (feedToRemove.isPublic) {
-            await togglePublic(feedToRemove, false); 
-        }
+        
         userFeeds.value = userFeeds.value.filter(f => f.url !== feedToRemove.url);
         feedItems.value = feedItems.value.filter(i => i.sourceUrl !== feedToRemove.url);
         await saveUserFeeds();
