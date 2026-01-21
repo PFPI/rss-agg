@@ -11,6 +11,7 @@ const feedItems = ref([]);
 const userFeeds = ref([]);
 const categories = ref([]);
 const loading = ref(false);
+const hiddenFeeds = ref([]);
 
 // --- FETCHERS (Internal) ---
 const fetchGuardianNews = async () => {
@@ -49,20 +50,20 @@ const fetchCongressBills = async () => {
 // --- SYSTEM FEED CONFIGURATION ---
 // 1. Define them in one place (Name + URL + The Function to call)
 const SYSTEM_FEEDS_CONFIG = [
-    { 
-        name: 'The Guardian', 
-        url: 'https://www.theguardian.com/us/environment', 
-        fetcher: fetchGuardianNews 
+    {
+        name: 'The Guardian',
+        url: 'https://www.theguardian.com/us/environment',
+        fetcher: fetchGuardianNews
     },
-    { 
-        name: 'New York Times', 
-        url: 'https://www.nytimes.com/section/climate', 
-        fetcher: fetchNYTNews 
+    {
+        name: 'New York Times',
+        url: 'https://www.nytimes.com/section/climate',
+        fetcher: fetchNYTNews
     },
-    { 
+    {
         name: 'US Congress',  // <--- NEW ENTRY
-        url: 'https://www.congress.gov', 
-        fetcher: fetchCongressBills 
+        url: 'https://www.congress.gov',
+        fetcher: fetchCongressBills
     }
 ];
 
@@ -108,7 +109,7 @@ export function useFeeds(user) {
         return autoCategorize(items, categories.value);
     };
 
-   // ... inside src/composables/useFeeds.js
+    // ... inside src/composables/useFeeds.js
 
     const refreshAllFeeds = async () => {
         if (!user.value) return;
@@ -122,12 +123,12 @@ export function useFeeds(user) {
         const systemPromises = SYSTEM_FEEDS_CONFIG.map(async (config) => {
             const items = await config.fetcher();
             if (!Array.isArray(items)) return [];
-            
+
             // THE FIX: Overwrite 'sourceUrl' to match the Config URL exactly.
             // This ensures the "Hide" button (which uses config.url) always matches the item.
             return items.map(item => ({
-                ...item, 
-                sourceUrl: config.url 
+                ...item,
+                sourceUrl: config.url
             }));
         });
 
@@ -139,11 +140,11 @@ export function useFeeds(user) {
 
         // 4. Flatten and Merge
         let allItems = rssResults.flat();
-        
+
         systemResults.forEach(res => {
             if (Array.isArray(res)) allItems = [...allItems, ...res];
         });
-        
+
         allItems = autoCategorize(allItems, categories.value);
 
         feedItems.value = allItems.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
@@ -154,16 +155,18 @@ export function useFeeds(user) {
         if (!user.value) return;
         const docRef = doc(db, "users", user.value.uid);
         const docSnap = await getDoc(docRef);
-        
+
         if (docSnap.exists()) {
             const data = docSnap.data();
             userFeeds.value = normalizeFeeds(data.feeds || []);
             categories.value = data.categories || [];
+            hiddenFeeds.value = data.hiddenFeeds || [];
             refreshAllFeeds();
         } else {
-            await setDoc(docRef, { feeds: [], categories: [] });
+            await setDoc(docRef, { feeds: [], categories: [], hiddenFeeds: [] });
             userFeeds.value = [];
             categories.value = [];
+            hiddenFeeds.value = [];
         }
     };
 
@@ -174,10 +177,10 @@ export function useFeeds(user) {
 
     const addFeed = async (url, name = null) => {
         if (userFeeds.value.some(f => f.url === url)) return;
-        const newFeed = { 
-            url, 
-            name: name || url, 
-            isPublic: false 
+        const newFeed = {
+            url,
+            name: name || url,
+            isPublic: false
         };
         userFeeds.value.push(newFeed);
         await saveUserFeeds();
@@ -185,7 +188,7 @@ export function useFeeds(user) {
     };
 
     const removeFeed = async (feedToRemove) => {
-        
+
         userFeeds.value = userFeeds.value.filter(f => f.url !== feedToRemove.url);
         feedItems.value = feedItems.value.filter(i => i.sourceUrl !== feedToRemove.url);
         await saveUserFeeds();
@@ -197,7 +200,7 @@ export function useFeeds(user) {
 
         const oldFeed = userFeeds.value[feedIndex];
         const newFeed = { ...oldFeed, name: newName, isPublic };
-        
+
         userFeeds.value[feedIndex] = newFeed;
         await saveUserFeeds();
 
@@ -228,8 +231,8 @@ export function useFeeds(user) {
     };
 
     const togglePublic = async (feed, shouldBePublic) => {
-         const updatedFeed = { ...feed, isPublic: shouldBePublic };
-         await syncToPublicLibrary(updatedFeed);
+        const updatedFeed = { ...feed, isPublic: shouldBePublic };
+        await syncToPublicLibrary(updatedFeed);
     }
 
     const fetchPublicFeeds = async () => {
@@ -238,7 +241,7 @@ export function useFeeds(user) {
     };
 
     const syncBucketToPublicLibrary = async (bucket) => {
-        const bucketId = generateArticleId(bucket.name); 
+        const bucketId = generateArticleId(bucket.name);
         const docRef = doc(db, 'public_buckets', bucketId);
 
         if (bucket.isPublic) {
@@ -265,10 +268,10 @@ export function useFeeds(user) {
 
         const keywords = keywordsString.split(',').map(k => k.trim()).filter(k => k);
         const newCat = { name, keywords, isPublic };
-        
+
         categories.value.push(newCat);
         await updateDoc(doc(db, "users", user.value.uid), { categories: categories.value });
-        
+
         if (isPublic) await syncBucketToPublicLibrary(newCat);
         feedItems.value = autoCategorize(feedItems.value, categories.value);
     };
@@ -279,10 +282,10 @@ export function useFeeds(user) {
         if (index === -1) return;
 
         const oldCat = categories.value[index];
-        const keywords = Array.isArray(newKeywordsString) 
-            ? newKeywordsString 
+        const keywords = Array.isArray(newKeywordsString)
+            ? newKeywordsString
             : newKeywordsString.split(',').map(k => k.trim()).filter(k => k);
-        
+
         const updatedCat = { name: newName, keywords, isPublic };
         categories.value[index] = updatedCat;
 
@@ -292,8 +295,8 @@ export function useFeeds(user) {
             await syncBucketToPublicLibrary(updatedCat);
         }
         if (oldCat.isPublic && !isPublic) {
-             const oldId = generateArticleId(oldCat.name);
-             await deleteDoc(doc(db, 'public_buckets', oldId));
+            const oldId = generateArticleId(oldCat.name);
+            await deleteDoc(doc(db, 'public_buckets', oldId));
         }
 
         feedItems.value = autoCategorize(feedItems.value, categories.value);
@@ -309,6 +312,22 @@ export function useFeeds(user) {
         categories.value = categories.value.filter(c => c.name !== name);
         await updateDoc(doc(db, "users", user.value.uid), { categories: categories.value });
         feedItems.value = autoCategorize(feedItems.value, categories.value);
+    };
+
+    const toggleFeedVisibility = async (url) => {
+        if (!user.value) return;
+
+        // Update Local State
+        if (hiddenFeeds.value.includes(url)) {
+            hiddenFeeds.value = hiddenFeeds.value.filter(u => u !== url);
+        } else {
+            hiddenFeeds.value.push(url);
+        }
+
+        // Save to Firestore
+        await updateDoc(doc(db, "users", user.value.uid), {
+            hiddenFeeds: hiddenFeeds.value
+        });
     };
 
     // --- OPML ---
@@ -341,7 +360,8 @@ export function useFeeds(user) {
     };
 
     return {
-        feedItems, userFeeds, categories, loading, systemFeeds, // <--- Exported here
+        feedItems, userFeeds, categories, loading, systemFeeds,
+        hiddenFeeds, toggleFeedVisibility,
         loadUserPreferences, addFeed, removeFeed, updateFeed,
         addCategory, editCategory, removeCategory, refreshAllFeeds,
         importOPML, exportOPML, fetchPublicFeeds, fetchPublicBuckets,

@@ -4,19 +4,19 @@ import { useRouter } from 'vue-router';
 import { useAuth } from '../composables/useAuth';
 import { useFeeds } from '../composables/useFeeds';
 import { useSaved } from '../composables/useSaved';
-// 1. IMPORT NEW COMPOSABLE
 import { useFeedFiltering } from '../composables/useFeedFiltering';
 
-// Components
 import Sidebar from '../components/Sidebar.vue';
 import FeedStream from '../components/FeedStream.vue'; 
 
 const { user, logout } = useAuth();
 const router = useRouter();
+
 const { 
   feedItems, userFeeds, categories, loading: feedsLoading, systemFeeds,
   loadUserPreferences, addFeed, removeFeed, addCategory, editCategory, 
-  removeCategory, refreshAllFeeds, importOPML, exportOPML, updateFeed 
+  removeCategory, refreshAllFeeds, importOPML, exportOPML, updateFeed,
+  hiddenFeeds, toggleFeedVisibility 
 } = useFeeds(user);
 
 // 1. Destructure publicItems and fetchPublicItems
@@ -24,9 +24,9 @@ const { savedItems, publicItems, fetchSavedItems, fetchPublicItems, loading: sav
 
 // 2. Pass publicItems to the filter engine
 const {
-  searchQuery, hiddenFeeds, activeTab, sortBy, sortOrder, currentCategory, 
-  filteredItems, toggleFeed, toggleSortOrder
-} = useFeedFiltering(feedItems, savedItems, publicItems); // <--- Pass publicItems here!
+  searchQuery, activeTab, sortBy, sortOrder, currentCategory, 
+  filteredItems, toggleSortOrder
+} = useFeedFiltering(feedItems, savedItems, publicItems, hiddenFeeds); // <--- Pass publicItems here!
 
 
 // --- AUTH & WATCHERS ---
@@ -75,7 +75,7 @@ watch(activeTab, (newTab) => {
         @add-category="addCategory"
         @edit-category="editCategory" 
         @remove-category="removeCategory"
-        @toggle-feed="toggleFeed"
+        @toggle-feed="toggleFeedVisibility"
         @refresh="refreshAllFeeds"
         @import-opml="importOPML" 
         @export-opml="exportOPML"
