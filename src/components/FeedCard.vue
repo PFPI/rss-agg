@@ -4,6 +4,7 @@ import { formatDistanceToNow, isPast, parseISO, isValid } from 'date-fns';
 import { useSummaries } from '../composables/useSummaries';
 import { useSaved } from '../composables/useSaved';
 import { useAuth } from '../composables/useAuth';
+import PostModal from './PostModal.vue';
 
 const props = defineProps(['item']);
 
@@ -17,6 +18,18 @@ const summary = ref(null);
 const loading = ref(false);
 const checkingCache = ref(true);
 const error = ref(null);
+const showPostModal = ref(false);
+const draftText = ref('');
+
+const openPostModal = () => {
+  // Use AI tweet if available, otherwise title + link
+  if (summary.value && summary.value.tweet) {
+    draftText.value = summary.value.tweet;
+  } else {
+    draftText.value = `${props.item.title}`;
+  }
+  showPostModal.value = true;
+};
 
 const getRelativeTime = (dateString) => {
   if (!dateString) return '';
@@ -102,6 +115,21 @@ const getDeadlineStatus = (dateString) => {
         >
           {{ isSaved(item) ? '★ Saved' : '☆ Save' }}
         </button>
+
+        <button 
+  class="icon-btn bsky-btn" 
+  @click="openPostModal" 
+  title="Post to BlueSky"
+>
+  🦋 Post
+</button>
+
+<PostModal 
+  :isOpen="showPostModal" 
+  :initialText="draftText" 
+  :item="item"
+  @close="showPostModal = false"
+/>
       </div>
     </div>
 
@@ -188,4 +216,6 @@ p { margin: 0; color: #444; line-height: 1.4; }
 .nyt-news .source-tag { background-color: #000000; color: white; font-family: 'Georgia', serif; }
 .card-image { margin-bottom: 12px; border-radius: 4px; overflow: hidden; height: 180px; background: #f0f0f0; }
 .card-image img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.bsky-btn { background: #e0f2fe; color: #0284c7; border-color: #7dd3fc; font-weight: bold; }
+.bsky-btn:hover { background: #bae6fd; }
 </style>
