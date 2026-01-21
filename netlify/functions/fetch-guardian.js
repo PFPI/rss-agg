@@ -31,7 +31,7 @@ export const handler = async function (event, context) {
       sourceUrl: "https://www.theguardian.com/us/environment",
       author: article.fields?.byline,
       // Optional: You could add a thumbnail image here if your UI supported it
-      // image: article.fields?.thumbnail 
+      image: article.fields?.thumbnail 
     }));
 
     return {
